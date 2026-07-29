@@ -130,7 +130,7 @@ Crear src/app.js con:
 2. Crear instancia de Express
 3. Configurar Handlebars como motor de plantillas (extname hbs layoutsDir partialsDir defaultLayout)
 4. Agregar middlewares globales: express.json express.urlencoded
-5. Agregar una ruta GET / minima para verificar que el server responde (res.json({ message: 'API Quiz-IA - OK' }))
+5. Agregar una ruta GET / minima para verificar que el server responde (res.json({ message: 'API Quiz - OK' }))
 6. Exportar app (no iniciar servidor aqui)
 
 Tambien:
@@ -146,7 +146,7 @@ Fragmentos clave:
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Quiz-IA</title>
+  <title>Quiz</title>
 </head>
 <body>
   {{{body}}}
@@ -224,7 +224,7 @@ Que estudiar:
 Que hacer:
 1. Ejecutar npm run dev
 2. Hacer GET a http://localhost:3001/
-3. Confirmar que responde con JSON message API Quiz-IA - OK
+3. Confirmar que responde con JSON message API Quiz - OK
 4. Si falla leer el error completo y resolverlo
 
 Errores comunes:

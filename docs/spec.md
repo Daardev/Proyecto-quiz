@@ -1,7 +1,7 @@
-# Spec del Proyecto: quiz-ia
+# Spec del Proyecto: Quiz
 
 ## 1. Visión General
-- **Nombre**: quiz-ia
+- **Nombre**: Quiz
 - **Descripción**: Plataforma de quizzes de programación con ejecución de código en sandbox y evaluación basada en tests predefinidos
 - **Plataforma**: Web
 - **Arquitectura**: SSR (Server-Side Rendering) con Handlebars. El backend Express renderiza HTML completo en cada request. El cliente solo aporta interactividad (Monaco Editor, timers) via modulos JS.
@@ -28,7 +28,7 @@
 ## 3. Estructura del Proyecto
 
 ```
-quiz-ia/
+Quiz/
 ├── frontend/
 │   ├── public/
 │   │   └── styles/
@@ -248,7 +248,7 @@ API JSON (opcional para AJAX):
 ### Sistema de Puntuación
 - Score = (testsPasados / testsTotal) × 100 × dificultad
 - Tests evaluados por Judge0 (sandbox)
-- Sin feedback de IA
+- Evaluacion deterministica basada en ejecucion de tests
 
 ### Seguridad
 - Verificación de SQL injection

@@ -1,7 +1,7 @@
 # Fase 7: Sandbox y Submissions Module
 
 ## Objetivo
-Implementar la ejecucion de codigo en Judge0 (sandbox) calculo de puntuacion por tests pasados y devolucion de resultados. Sin IA - la evaluacion es 100% basada en la ejecucion del codigo contra tests predefinidos.
+Implementar la ejecucion de codigo en Judge0 (sandbox) calculo de puntuacion por tests pasados y devolucion de resultados. La evaluacion es deterministica: depende solo de la ejecucion del codigo contra tests predefinidos.
 
 ---
 
@@ -117,7 +117,7 @@ Pistas:
 - El sandboxResults debe incluir: stdout stderr status time memory para cada test.
 - Si el sandbox falla (timeout compilation error) el score es 0 pero la submission se guarda.
 - getQuizResults debe funcionar aunque el quiz no este completo (puedes ver resultados parciales).
-- No hay feedback de IA. El usuario sabe que fallo mirando los tests que fallaron y el stderr.
+- El feedback se basa en los tests: el usuario sabe que fallo mirando los tests que fallaron y el stderr.
 
 Que estudiar:
 - Comparacion de strings: stdout vs expected (cuidado con espacios saltos de linea)

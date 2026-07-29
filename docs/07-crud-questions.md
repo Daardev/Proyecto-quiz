@@ -1,7 +1,7 @@
 # Fase 7: CRUD de Preguntas Manuales
 
 ## Objetivo
-Crear un sistema para agregar y gestionar preguntas de quiz manualmente en la base de datos. Las preguntas se crean por ti (no por IA) y se almacenan para que el sistema las sirva a los usuarios.
+Crear un sistema para agregar y gestionar preguntas de quiz manualmente en la base de datos. Las preguntas se crean por el administrador y se almacenan para que el sistema las sirva a los usuarios.
 
 ---
 

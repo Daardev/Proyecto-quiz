@@ -157,7 +157,7 @@ Reemplazar script inline de results.html:
    - Boton Nuevo Quiz -> index.html
 
 Pistas:
-- El feedback de IA ya no existe. En su lugar muestra los tests pasados y fallados con el detalle de expected vs stdout.
+- El feedback se basa en los tests: muestra los tests pasados y fallados con el detalle de expected vs stdout.
 - El score total se puede animar con un contador de 0 hasta el score (setInterval con incrementos). Es un detalle visual simple pero impactante.
 - Si no hay resultados (error) muestra pantalla de error con opcion de reintentar.
 - Para cada test fallado muestra que esperaba el test y que devolvio el codigo del usuario.

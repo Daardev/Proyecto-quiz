@@ -46,12 +46,12 @@ Que hacer:
 1. Ir a Google Cloud Console > APIs & Services > Credentials
 2. Editar el OAuth 2.0 Client ID
 3. En "Authorized redirect URIs" agregar:
-   - `https://quiz-ia.vercel.app/api/auth/google/callback`
+   - `https://Quiz.vercel.app/api/auth/google/callback`
 4. Guardar
 
 Pistas:
 - Google verifica EXACTAMENTE la URI. Sin `https://` o con path incorrecto falla.
-- Si tu app de Vercel es `quiz-ia.vercel.app` usa esa URI exacta.
+- Si tu app de Vercel es `Quiz.vercel.app` usa esa URI exacta.
 - Google puede tardar unos minutos en propagar los cambios.
 
 Que estudiar:
@@ -64,7 +64,7 @@ Que estudiar:
 
 Que hacer:
 **Opcion A: Usar subdominio gratuito de Vercel** (recomendado para empezar):
-- Tu app queda en `https://quiz-ia.vercel.app`
+- Tu app queda en `https://Quiz.vercel.app`
 - No requiere configuracion adicional
 - SSL automatico
 
@@ -93,14 +93,14 @@ Que estudiar:
 ### Paso 4: Probar el deploy completo
 
 Que hacer:
-1. Visitar `https://quiz-ia.vercel.app/` → debe mostrar el index con tecnologias
+1. Visitar `https://Quiz.vercel.app/` → debe mostrar el index con tecnologias
 2. Hacer login con Google → debe redirigir al callback correctamente
 3. Crear un quiz y completarlo
 4. Visitar `/profile` → debe mostrar el quiz completado
 5. Login como admin (promover primero en Neon prod) → ir a `/admin`
 6. Crear una pregunta → debe guardarse en BD prod
 7. Verificar DevTools > Network:
-   - HTML debe venir de `quiz-ia.vercel.app`
+   - HTML debe venir de `Quiz.vercel.app`
    - Assets estaticos (CSS) deben servirse correctamente
 
 Errores comunes:
@@ -124,7 +124,7 @@ Que estudiar:
 ## Checklist de verificacion
 
 - [ ] Judge0 self-hosted corriendo (o mock activo)
-- [ ] Google OAuth callback actualizado para `quiz-ia.vercel.app`
+- [ ] Google OAuth callback actualizado para `Quiz.vercel.app`
 - [ ] Dominio configurado (subdominio gratis o custom)
 - [ ] Login con Google funciona en produccion
 - [ ] Crear quiz y ver en /profile funciona

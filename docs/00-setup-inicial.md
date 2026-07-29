@@ -8,7 +8,7 @@ Crear la raiz del proyecto antes de programar: repo git estructura de carpetas t
 ### Paso 1: Crear repo Git
 
 Que hacer:
-1. Crear una carpeta llamada `quiz-ia` en tu maquina (donde vivira todo el proyecto)
+1. Crear una carpeta llamada `Quiz` en tu maquina (donde vivira todo el proyecto)
 2. Entrar a la carpeta y ejecutar `git init`
 3. Crear un repo vacio en GitHub o GitLab
 4. Conectar el repo local con el remoto: `git remote add origin <url-del-repo>`
@@ -32,7 +32,7 @@ Que hacer:
 Crear manualmente esta estructura en la raiz del proyecto:
 
 ```
-quiz-ia/
+Quiz/
   backend/                ← todo el codigo backend (Fases 1-11)
   frontend/               ← assets del frontend (Fases 8-9)
   docs/                   ← spec.md + todas las fases
@@ -61,7 +61,7 @@ Que estudiar:
 ### Paso 3: Crear .gitignore raiz
 
 Que hacer:
-Crear archivo `.gitignore` en la raiz de `quiz-ia/` con este contenido:
+Crear archivo `.gitignore` en la raiz de `Quiz/` con este contenido:
 
 ```
 node_modules/
@@ -89,10 +89,10 @@ Que estudiar:
 ### Paso 4: Crear README.md inicial
 
 Que hacer:
-Crear archivo `README.md` en la raiz de `quiz-ia/`:
+Crear archivo `README.md` en la raiz de `Quiz/`:
 
 ```markdown
-# Quiz-IA
+# Quiz
 
 Plataforma de quizzes de programacion con ejecucion de codigo en sandbox y evaluacion basada en tests predefinidos.
 

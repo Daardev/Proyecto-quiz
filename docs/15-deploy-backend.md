@@ -8,7 +8,7 @@ Llevar el backend Express + Node a produccion usando Vercel Functions. Base de d
 ### Paso 1: Crear proyecto Neon de produccion
 
 Que hacer:
-1. Ir a Neon console y crear un proyecto nuevo llamado `quiz-ia-prod` (separado del de desarrollo)
+1. Ir a Neon console y crear un proyecto nuevo llamado `Quiz-prod` (separado del de desarrollo)
 2. Copiar la cadena de conexion (`DATABASE_URL`) con el formato `postgresql://user:pass@host/db?sslmode=require`
 3. Ejecutar las migraciones apuntando a esta BD antes del primer deploy:
 
@@ -114,7 +114,7 @@ Que estudiar:
 Que hacer:
 1. Ir a vercel.com y crear cuenta (podes usar GitHub para login)
 2. Conectar la cuenta de Vercel a tu repo de GitHub/GitLab
-3. Darle acceso solo al repo `quiz-ia`
+3. Darle acceso solo al repo `Quiz`
 
 Pistas:
 - Vercel tiene plan Free generoso. Suficiente para empezar.
@@ -132,9 +132,9 @@ Que estudiar:
 
 Que hacer:
 1. En Vercel dashboard click "Add New Project"
-2. Importar el repo `quiz-ia`
+2. Importar el repo `Quiz`
 3. Configurar:
-   - Project Name: `quiz-ia`
+   - Project Name: `Quiz`
    - Framework Preset: Other
    - Root Directory: `backend`
    - Build Command: `npm install && npx drizzle-kit migrate`
@@ -192,7 +192,7 @@ Que hacer:
 Pistas:
 - El primer deploy puede tardar 1-2 minutos (instalar dependencias + correr migraciones).
 - Si las migraciones fallan el deploy falla. Ver logs.
-- Vercel genera una URL temporal: `https://quiz-ia.vercel.app` (o similar).
+- Vercel genera una URL temporal: `https://Quiz.vercel.app` (o similar).
 - Para deploys manuales desde terminal: `vercel deploy --prod`.
 
 Que estudiar:
@@ -205,9 +205,9 @@ Que estudiar:
 ### Paso 9: Probar el deploy basico
 
 Que hacer:
-1. Visitar `https://quiz-ia.vercel.app/` → debe mostrar el index con tecnologias
-2. Visitar `https://quiz-ia.vercel.app/styles/main.css` → debe servir el CSS
-3. Visitar `https://quiz-ia.vercel.app/src/lib/api-client.js` → debe servir el JS
+1. Visitar `https://Quiz.vercel.app/` → debe mostrar el index con tecnologias
+2. Visitar `https://Quiz.vercel.app/styles/main.css` → debe servir el CSS
+3. Visitar `https://Quiz.vercel.app/src/lib/api-client.js` → debe servir el JS
 
 Errores comunes:
 - 500 Internal Server Error → ver logs de Vercel
@@ -233,7 +233,7 @@ Que estudiar:
 - [ ] Proyecto importado en Vercel dashboard
 - [ ] Variables de entorno configuradas en Vercel (Production)
 - [ ] Deploy exitoso en Vercel
-- [ ] URL `https://quiz-ia.vercel.app` carga el index
+- [ ] URL `https://Quiz.vercel.app` carga el index
 - [ ] CSS y JS se sirven correctamente
 
 ---

@@ -203,7 +203,7 @@ Pistas:
 - Las preguntas pueden mostrarse como cards expandibles (accordion). El codigo va dentro de pre/code.
 - Para cada pregunta muestra: tests pasados (verde) y tests fallados (rojo) con el expected vs stdout.
 - Si el quiz no tiene submissions (todas las preguntas saltadas) muestra score 0 pero con la lista de preguntas.
-- No hay feedback de IA - el usuario sabe que fallo mirando la diferencia entre expected y stdout.
+- El feedback se basa en los tests: el usuario sabe que fallo mirando la diferencia entre expected y stdout.
 
 Que estudiar:
 - HTML details/summary: accordion nativo sin JS

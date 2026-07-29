@@ -1,7 +1,7 @@
 # Fase 8: Questions y Quizzes Module
 
 ## Objetivo
-Crear el flujo de quizzes: recibir parametros del usuario buscar preguntas predefinidas en BD y servirlas una a una al frontend. Sin IA - todo es consulta a la base de datos.
+Crear el flujo de quizzes: recibir parametros del usuario buscar preguntas predefinidas en BD y servirlas una a una al frontend. Las preguntas son estaticas: se eligen al inicio del quiz y persisten durante la sesion.
 
 ---
 
