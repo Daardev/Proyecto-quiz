@@ -1,4 +1,4 @@
-# Quiz-IA
+# Quiz
 
 Plataforma de quizzes de programacion con ejecucion de codigo en sandbox y evaluacion basada en tests predefinidos.
 
