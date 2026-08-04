@@ -63,7 +63,8 @@ backend/src/seeds/parser/
 
 # Backups locales y one-offs del backend
 backend/backups/
-backend/scripts/
+backend/scripts/*
+!backend/scripts/sync-assets.mjs
 backend/_chk.cjs
 backend/debug-categories.js
 backend/src/seeds/questions-batch.json.bak

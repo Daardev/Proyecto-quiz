@@ -49,6 +49,8 @@ app.engine('hbs', engine({
 app.set('view engine', 'hbs');
 app.set('views', join(__dirname, './views'));
 
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -64,6 +66,8 @@ app.use(session({
   cookie: {
     maxAge: 24 * 60 * 60 * 1000,
     secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'lax',
   },
 }));
 
@@ -84,8 +88,8 @@ app.use(async (req, res, next) => {
   }
 });
 
-app.use(express.static(join(__dirname, '../../frontend/public')));
-app.use('/src', express.static(join(__dirname, '../../frontend/src')));
+app.use(express.static(join(__dirname, '../public')));
+app.use('/src', express.static(join(__dirname, '../public/src')));
 
 app.get('/', async (req, res, next) => {
   try {
