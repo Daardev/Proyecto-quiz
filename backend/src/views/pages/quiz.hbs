@@ -1,0 +1,336 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      {{#if isAdmin}}<a href="/admin">⚙ Panel</a>{{/if}}
+    {{else}}
+      <span class="guest-badge" title="Tus respuestas se evalúan pero los puntos no se guardan">👤 Modo invitado</span>
+      <a href="/login">Iniciar sesión</a>
+      <a href="/register">Registrarse</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <div class="quiz-header">
+    <div>
+      <span class="quiz-progress" id="progress">— / —</span>
+      <span class="quiz-progress" id="language-tag" style="margin-left:0.5rem;"></span>
+    </div>
+    <div class="hearts" id="hearts" aria-label="Intentos restantes">
+      <span class="heart" data-idx="0">♥</span>
+      <span class="heart" data-idx="1">♥</span>
+      <span class="heart" data-idx="2">♥</span>
+      <span class="heart" data-idx="3">♥</span>
+      <span class="heart" data-idx="4">♥</span>
+    </div>
+  </div>
+
+  <div class="question-card" id="question-card">
+    <div class="question-id" id="question-id">Cargando…</div>
+    <h2 class="question-title" id="question-title">Cargando…</h2>
+
+    <div id="code-area">
+      <div class="editor-container" id="code-editor"></div>
+      <div id="analyzing-overlay" class="analyzing-overlay hidden" role="status" aria-live="polite">
+        <div class="analyzing-overlay__spinner" aria-hidden="true"></div>
+        <p class="analyzing-overlay__title">Analizando tu código…</p>
+        <p class="analyzing-overlay__subtitle">Ejecutando tests en el sandbox</p>
+      </div>
+    </div>
+
+    <div id="choice-area" style="display:none;">
+      <div id="options-container" class="card"></div>
+    </div>
+  </div>
+
+  <div class="row answer-zone" id="answer-zone" style="margin-top: 1rem;">
+    <button id="submit-btn">Enviar respuesta</button>
+  </div>
+</div>
+
+<script type="module">
+  import { api } from '/src/lib/api-client.js';
+  import { CodeEditor } from '/src/components/code-editor.js';
+
+  const params = new URLSearchParams(window.location.search);
+  const quizId = parseInt(params.get('quizId'), 10);
+  let firstQuestion = {{{json firstQuestion}}};
+  if (!quizId) {
+    document.querySelector('.container').innerHTML = '<p class="error">Quiz ID faltante en la URL.</p>';
+  }
+
+  const questionCardEl = document.getElementById('question-card');
+  const questionIdEl = document.getElementById('question-id');
+  const titleEl = document.getElementById('question-title');
+  const progressEl = document.getElementById('progress');
+  const languageTagEl = document.getElementById('language-tag');
+  const codeArea = document.getElementById('code-area');
+  const choiceArea = document.getElementById('choice-area');
+  const optionsContainer = document.getElementById('options-container');
+  const answerZone = document.getElementById('answer-zone');
+  const heartsEl = document.getElementById('hearts');
+  const heartEls = Array.from(heartsEl.querySelectorAll('.heart'));
+  const analyzingOverlay = document.getElementById('analyzing-overlay');
+
+  function showAnalyzing() {
+    analyzingOverlay.classList.remove('hidden');
+  }
+  function hideAnalyzing() {
+    analyzingOverlay.classList.add('hidden');
+  }
+
+  let editor = null;
+  let currentQuestion = null;
+  let submitting = false;
+  let selectedOption = null;
+
+  let maxAttempts = 5;
+  let attemptsLeft = null;
+
+  const CHECK_DURATION_MS = 850;
+  const ERROR_DURATION_MS = 550;
+
+  function applyAttempts(left, max) {
+    if (typeof max === 'number') maxAttempts = max;
+    if (typeof left !== 'number') return;
+    attemptsLeft = Math.max(0, Math.min(left, maxAttempts));
+    const lostCount = maxAttempts - attemptsLeft;
+    heartEls.forEach((h, i) => {
+      if (i < lostCount) {
+        h.classList.add('lost');
+        h.classList.remove('full');
+      } else {
+        h.classList.add('full');
+        h.classList.remove('lost');
+      }
+    });
+    refreshSubmitState();
+  }
+
+  function consumeHeart() {
+    const lostCount = maxAttempts - attemptsLeft;
+    const heart = heartEls[lostCount];
+    if (heart) {
+      heart.classList.add('lost');
+      heart.classList.remove('full');
+    }
+  }
+
+  function refreshSubmitState() {
+    const btn = document.getElementById('submit-btn');
+    if (btn) btn.disabled = attemptsLeft !== null && attemptsLeft <= 0;
+  }
+
+  async function loadMonaco(initialCode, language) {
+    const wrapper = new CodeEditor('code-editor', {
+      language: language || 'javascript',
+      value: initialCode || '// escribe tu código aquí',
+    });
+    await wrapper.init();
+    return wrapper;
+  }
+
+  function renderOptions(options) {
+    optionsContainer.innerHTML = '';
+    selectedOption = null;
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary option-btn';
+      btn.dataset.idx = String(idx);
+      btn.innerHTML = `<strong>${letters[idx]}.</strong> ${escapeHtml(opt)}`;
+      btn.addEventListener('click', () => {
+        // Solo actualiza la selección; las opciones previamente incorrectas mantienen su marca roja.
+        optionsContainer.querySelectorAll('button.option-btn.is-selected').forEach(b => {
+          b.classList.remove('is-selected');
+        });
+        btn.classList.add('is-selected');
+        selectedOption = idx;
+      });
+      optionsContainer.appendChild(btn);
+    });
+  }
+
+  function markSelectedOptionIncorrect() {
+    if (selectedOption === null) return;
+    const btn = optionsContainer.querySelector(`button.option-btn[data-idx="${selectedOption}"]`);
+    if (!btn) return;
+    btn.classList.remove('is-selected');
+    btn.classList.add('is-incorrect');
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function disableInputs() {
+    if (editor) {
+      try { editor.editor.updateOptions({ readOnly: true }); } catch (_) {}
+    }
+    optionsContainer.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  }
+
+  function enableInputs() {
+    if (editor) {
+      try { editor.editor.updateOptions({ readOnly: false }); } catch (_) {}
+    }
+    optionsContainer.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
+
+  function showCheckAnimation() {
+    answerZone.innerHTML = '<div class="answer-feedback is-correct" aria-label="Respuesta correcta">✓</div>';
+  }
+
+  function showErrorAnimation() {
+    answerZone.innerHTML = '<div class="answer-feedback is-error" aria-label="Respuesta incorrecta">✗</div>';
+  }
+
+  function restoreSubmitButton() {
+    answerZone.innerHTML = '<button id="submit-btn">Enviar respuesta</button>';
+    const btn = document.getElementById('submit-btn');
+    btn.addEventListener('click', submitHandler);
+    refreshSubmitState();
+  }
+
+  async function submitHandler() {
+    if (!currentQuestion || submitting || attemptsLeft === null || attemptsLeft <= 0) return;
+    submitting = true;
+    const initialBtn = document.getElementById('submit-btn');
+    if (initialBtn) initialBtn.disabled = true;
+    showAnalyzing();
+
+    let payload;
+    if (currentQuestion.type === 'multiple_choice') {
+      if (selectedOption === null) {
+        hideAnalyzing();
+        submitting = false;
+        refreshSubmitState();
+        return;
+      }
+      payload = { questionId: currentQuestion.questionId, answer: selectedOption };
+    } else {
+      payload = { questionId: currentQuestion.questionId, code: editor.getValue() };
+    }
+
+    try {
+      const result = await api.submitAnswer(quizId, payload);
+      const isCorrect = result.isCorrect === true
+        || (result.testsTotal > 0 && result.testsPassed === result.testsTotal);
+
+      if (!isCorrect) {
+        consumeHeart();
+        applyAttempts(result.attemptsLeft, result.maxAttempts);
+        hideAnalyzing();
+        if (currentQuestion.type === 'multiple_choice') {
+          markSelectedOptionIncorrect();
+        }
+        showErrorAnimation();
+
+        if (attemptsLeft <= 0) {
+          setTimeout(() => { window.location.href = `/results?quizId=${quizId}`; }, ERROR_DURATION_MS);
+          return;
+        }
+
+        setTimeout(() => {
+          restoreSubmitButton();
+          enableInputs();
+          submitting = false;
+          if (editor && currentQuestion.type !== 'multiple_choice') {
+            try { editor.editor.focus(); } catch (_) {}
+          }
+        }, ERROR_DURATION_MS);
+      } else {
+        applyAttempts(result.attemptsLeft, result.maxAttempts);
+        hideAnalyzing();
+        showCheckAnimation();
+
+        if (attemptsLeft <= 0) {
+          setTimeout(() => { window.location.href = `/results?quizId=${quizId}`; }, CHECK_DURATION_MS);
+          return;
+        }
+
+        setTimeout(() => {
+          loadQuestion();
+        }, CHECK_DURATION_MS);
+      }
+    } catch (err) {
+      hideAnalyzing();
+      restoreSubmitButton();
+      enableInputs();
+      submitting = false;
+    }
+  }
+
+  document.getElementById('submit-btn').addEventListener('click', submitHandler);
+
+  async function renderQuestion(data) {
+    currentQuestion = data;
+    questionIdEl.textContent = data.questionId ? `#${data.questionId}` : '';
+    titleEl.textContent = data.description || data.title || '';
+    progressEl.textContent = `${data.order} / ${data.total}`;
+    languageTagEl.textContent = `· ${data.language}`;
+
+    applyAttempts(data.attemptsLeft, data.maxAttempts);
+
+    if (attemptsLeft === 0) {
+      window.location.href = `/results?quizId=${quizId}`;
+      return;
+    }
+
+    selectedOption = null;
+
+    if (data.type === 'multiple_choice') {
+      codeArea.style.display = 'none';
+      choiceArea.style.display = '';
+      renderOptions(data.options || []);
+      if (editor) { editor.destroy(); editor = null; }
+    } else {
+      codeArea.style.display = '';
+      choiceArea.style.display = 'none';
+      if (editor) editor.destroy();
+      editor = await loadMonaco(data.starterCode || '// escribe tu código aquí', data.language);
+    }
+
+    hideAnalyzing();
+  }
+
+  async function loadQuestion() {
+    submitting = false;
+    restoreSubmitButton();
+
+    if (firstQuestion && !firstQuestion.__error) {
+      const data = firstQuestion;
+      firstQuestion = null;
+      if (data.done) {
+        window.location.href = `/results?quizId=${quizId}`;
+        return;
+      }
+      try {
+        await renderQuestion(data);
+      } catch (err) {
+        titleEl.textContent = err.message;
+      }
+      return;
+    }
+
+    try {
+      const data = await api.getCurrentQuestion(quizId);
+      if (data.done) {
+        window.location.href = `/results?quizId=${quizId}`;
+        return;
+      }
+      await renderQuestion(data);
+    } catch (err) {
+      titleEl.textContent = err.message;
+    }
+  }
+
+  (async () => {
+    await loadQuestion();
+  })();
+</script>

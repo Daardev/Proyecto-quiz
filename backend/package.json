@@ -1,0 +1,49 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "app.js",
+  "nodemonConfig": {
+    "ignore": [
+      "src/seeds/questions-batch.json",
+      "src/seeds/questions-batch.json.tmp",
+      "src/seeds/parser/**",
+      "backups/**",
+      "**/*.tmp"
+    ]
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "seed": "node src/seeds/wipe-and-seed.js",
+    "validate:tests": "node scripts/validate-test-schemas.mjs",
+    "migrate:solutions": "node src/seeds/migrate-solutions.js",
+    "cleanup:anonymous": "node src/seeds/cleanup-anonymous.js",
+    "test:e2e": "node tests/e2e-quiz.js"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "ajv": "^8.20.0",
+    "bcrypt": "^6.0.0",
+    "connect-pg-simple": "^10.0.0",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "express-handlebars": "^9.0.1",
+    "express-session": "^1.19.0",
+    "pg": "^8.22.0",
+    "quickjs-emscripten": "^0.32.0"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "nodemon": "^3.1.14",
+    "playwright": "^1.62.1"
+  }
+}

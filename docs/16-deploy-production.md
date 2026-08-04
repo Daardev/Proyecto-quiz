@@ -1,62 +1,69 @@
 # Fase 16: Deploy Produccion Avanzado
 
 ## Objetivo
-Configurar las dependencias externas (Judge0 self-hosted) y el dominio para el deploy de produccion. Esta fase completa la puesta en marcha del proyecto en Vercel cubriendo lo que la Fase 15 dejo pendiente.
+Configurar las dependencias externas (ninguna, ya que el sandbox es WebAssembly local) y el dominio para el deploy de produccion. Esta fase completa la puesta en marcha del proyecto en Vercel cubriendo lo que la Fase 15 dejo pendiente.
 
 ---
 
-### Paso 1: Setup Judge0 self-hosted
+### Paso 1: Validar sandbox WebAssembly en produccion
 
 Que hacer:
-Judge0 debe correr en un servidor accesible desde Vercel. Opciones:
+El sandbox WASM (QuickJS + PGlite) corre en proceso. NO requiere servicios externos. Verificar:
 
-**Opcion A: Servicio Docker separado (Render DigitalOcean Linode)** — desplegar Judge0 via Docker:
-1. Crear un servicio en Render (no Vercel porque Render soporta Docker)
-2. Configurar para correr: `docker run -d -p 2358:2358 judge0/judge0:latest`
-3. Obtener la URL publica del servicio (algo como `https://judge0-tu-app.onrender.com`)
-4. Configurar `JUDGE0_API_URL=https://judge0-tu-app.onrender.com`
-
-**Opcion B: RapidAPI** — si preferis zero infra:
-1. Crear cuenta en RapidAPI Judge0
-2. `JUDGE0_API_URL=https://judge0-ce.p.rapidapi.com`
-3. `JUDGE0_API_KEY=<api-key>`
-4. Rate limits aplican.
-
-**Opcion C: Mock temporal** — para deployar YA sin Judge0:
-1. Modificar `sandbox.service.js` para devolver un resultado mock
-2. `JUDGE0_API_URL=` (vacio)
-3. Cuando tengas Judge0 real reemplazar el mock.
+1. QuickJS-WASM (`quickjs-emscripten`) carga correctamente en Vercel Functions
+2. PGlite (`@electric-sql/pglite`) ejecuta SQL en memoria
+3. Bundle no excede limites de Vercel (250 MB unzipped)
 
 Pistas:
-- Judge0 self-hosted requiere Docker y mantener el servicio corriendo. Mas trabajo pero gratis.
-- RapidAPI es zero infra pero tiene rate limits y costos.
-- Para el primer deploy podes usar Opcion C (mock) y agregar Judge0 despues.
-- Si Judge0 falla el quiz da error graceful. El usuario ve "No se pudo evaluar el codigo".
+- Ambos paquetes instalan archivos `.wasm` que Vercel Functions puede leer del filesystem.
+- Si PGlite falla por falta de `shared memory`, agregar en `vercel.json`:
+  ```json
+  {
+    "functions": {
+      "api/index.js": {
+        "memory": 1024
+      }
+    }
+  }
+  ```
+- Si los archivos `.wasm` no se incluyen en el deploy, verificar `.vercelignore` y el `package.json`.
+- Cold start: primera ejecucion ~200-500 ms por carga de WASM. Las siguientes son <50 ms.
+
+Opciones si WASM no es viable en Vercel:
+- **Opcion A (recomendada)**: mantener WASM, ajustar memory en `vercel.json`
+- **Opcion B**: migrar a un servicio separado (Render, Railway) que soporte procesos largos
+- **Opcion C**: usar Judge0 via RapidAPI (NO recomendado, contradice el spec actual)
 
 Que estudiar:
-- Judge0 self-hosted con Docker
-- Rate limits en RapidAPI
-- Mockear servicios externos en desarrollo
+- Vercel Functions memory limits
+- WebAssembly module loading en serverless
+- Trade-offs: serverless vs long-running process
 
 ---
 
-### Paso 2: Configurar Google OAuth callback de produccion
+### Paso 2: Configurar bootstrap admin en produccion
 
 Que hacer:
-1. Ir a Google Cloud Console > APIs & Services > Credentials
-2. Editar el OAuth 2.0 Client ID
-3. En "Authorized redirect URIs" agregar:
-   - `https://Quiz.vercel.app/api/auth/google/callback`
-4. Guardar
+Verificar que las variables de entorno para el bootstrap admin estan configuradas:
+
+1. En Vercel dashboard ir a Settings > Environment Variables
+2. Confirmar que existen:
+   - `ADMIN_USERNAME` = username deseado (ej: `admin`)
+   - `ADMIN_PASSWORD` = password seguro (NO el mismo que dev)
+   - `ADMIN_EMAIL` = email del admin (opcional)
+3. Marcar `ADMIN_PASSWORD` como "Sensitive"
+4. Redesplegar para que tome efecto
 
 Pistas:
-- Google verifica EXACTAMENTE la URI. Sin `https://` o con path incorrecto falla.
-- Si tu app de Vercel es `Quiz.vercel.app` usa esa URI exacta.
-- Google puede tardar unos minutos en propagar los cambios.
+- El bootstrap corre la primera vez que `app.js` se carga en Vercel (al primer request post-deploy).
+- Si el admin ya existe, lo promueve a `role='admin'` si no lo es.
+- Si las variables no estan configuradas, el bootstrap loggea mensaje y no hace nada (no falla).
+- Cambiar `ADMIN_PASSWORD` en Vercel NO cambia el password del admin existente. Para eso, hacer un UPDATE manual en Neon prod.
 
 Que estudiar:
-- OAuth redirect URIs: por que Google las exige (seguridad)
-- Wildcard URIs en OAuth (no soportadas por Google)
+- Idempotencia: bootstrap puede correr multiples veces sin romper
+- Separacion dev vs prod: passwords y secrets diferentes
+- Sensitive env vars en Vercel
 
 ---
 
@@ -81,7 +88,7 @@ Que hacer:
 Pistas:
 - El subdominio `vercel.app` es suficiente para empezar.
 - Vercel incluye SSL gratis con Let's Encrypt tanto para subdominio como para dominio custom.
-- Si usas dominio custom actualiza el redirect URI en Google Console con el nuevo dominio.
+- Si usas dominio custom, no hay redirect URIs de OAuth que actualizar (no usamos OAuth en este proyecto).
 
 Que estudiar:
 - DNS basics: A records CNAME propagacion
@@ -94,43 +101,46 @@ Que estudiar:
 
 Que hacer:
 1. Visitar `https://Quiz.vercel.app/` → debe mostrar el index con tecnologias
-2. Hacer login con Google → debe redirigir al callback correctamente
-3. Crear un quiz y completarlo
-4. Visitar `/profile` → debe mostrar el quiz completado
-5. Login como admin (promover primero en Neon prod) → ir a `/admin`
+2. Hacer `POST /api/auth/register` con un nuevo usuario → debe crear cuenta y establecer sesion
+3. Hacer `POST /api/auth/login` con admin → debe redirigir o devolver JSON con user.role=admin
+4. Visitar `/profile` → debe mostrar el usuario autenticado
+5. Login como admin (promover primero en Neon prod si no se hizo via env vars) → ir a `/admin`
 6. Crear una pregunta → debe guardarse en BD prod
-7. Verificar DevTools > Network:
-   - HTML debe venir de `Quiz.vercel.app`
-   - Assets estaticos (CSS) deben servirse correctamente
+7. Generar quiz y enviar respuesta → debe ejecutar codigo en WASM y devolver score
 
 Errores comunes:
 - 500 Internal Server Error → ver logs de Vercel
 - Sesion no persiste → verificar que `connect-pg-simple` este conectado y tabla `session` exista
-- OAuth redirect_uri_mismatch → Google Console no tiene la URI exacta
-- Migraciones no corren → revisar build command en Vercel
-- CSS no carga → revisar rutas en `vercel.json`
+- Sandbox WASM no responde → verificar que el bundle se subio y memory es suficiente
+- Admin no puede acceder a `/admin` → `ADMIN_USERNAME`/`ADMIN_PASSWORD` no configurados o rol no promovido
+- Login retorna 401 → password incorrecto (recordar que dev y prod son BDs separadas)
 
 Pistas:
 - Si algo falla revisa primero los logs de Vercel.
-- Para promover un admin en prod: conectate a Neon prod y ejecuta el UPDATE de Fase 3.
+- Para promover un admin en prod: si las env vars `ADMIN_USERNAME`/`ADMIN_PASSWORD` no estaban configuradas, conectar a Neon prod y ejecutar `UPDATE users SET role='admin' WHERE username='admin';`.
 
 Que estudiar:
 - Debugging de deploy: logs metrics traces
 - Vercel Functions logs vs build logs
 - Neon Console para verificar datos en BD prod
+- Aislamiento dev/prod: usuarios y passwords son distintos
 
 ---
 
 ## Checklist de verificacion
 
-- [ ] Judge0 self-hosted corriendo (o mock activo)
-- [ ] Google OAuth callback actualizado para `Quiz.vercel.app`
+- [ ] Sandbox WASM carga y ejecuta correctamente en produccion
+- [ ] QuickJS ejecuta JavaScript/Node.js sin errores
+- [ ] PGlite ejecuta SQL real en proceso
+- [ ] Bundle no excede limites de Vercel
+- [ ] Bootstrap admin funciona (env vars configuradas)
 - [ ] Dominio configurado (subdominio gratis o custom)
-- [ ] Login con Google funciona en produccion
+- [ ] Register funciona en produccion
+- [ ] Login funciona en produccion
+- [ ] Sesiones persisten entre requests
 - [ ] Crear quiz y ver en /profile funciona
 - [ ] Admin puede acceder a /admin y crear preguntas
-- [ ] Sesiones persisten entre requests
-- [ ] Judge0 ejecuta codigo correctamente (si esta configurado)
+- [ ] Sandbox ejecuta codigo y devuelve score correcto
 
 ---
 
@@ -139,11 +149,12 @@ Que estudiar:
 | Error | Causa probable |
 |-------|----------------|
 | 500 Internal Server Error | Logs en Vercel > revisar stack trace |
-| Sesion no persiste | connect-pg-simple no conectado o tabla session no existe |
-| OAuth redirect_uri_mismatch | Google Console no tiene la URI exacta |
-| Judge0 no responde | Servicio no corriendo o URL incorrecta |
+| Sesion no persiste | connect-pg-simple no conectado o tabla session no existe (Fase 6) |
+| Admin no puede acceder a /admin | `ADMIN_USERNAME`/`ADMIN_PASSWORD` no configurados o rol no promovido |
+| Sandbox WASM no responde | Bundle no se subio, falta memory, o archivo `.wasm` no se incluyo |
 | Dominio custom no resuelve | DNS no propagado o records mal configurados |
-| Cold start lento | Normal en Vercel Functions. Considerar Pro plan |
+| Cold start lento | Normal en Vercel Functions, primera ejecucion tarda ~200-500 ms por carga de WASM |
+| Score siempre 0 | Preguntas sin tests_template o categoria no detectada correctamente |
 
 ---
 
@@ -151,8 +162,9 @@ Que estudiar:
 
 | Concepto | Por que es importante |
 |----------|----------------------|
-| Judge0 self-hosted | Control total sin rate limits (pero requiere infra) |
-| Google OAuth callback | URI exacta requerida por Google para evitar ataques |
-| Dominio custom vs subdominio | Subdominio es gratis y suficiente para empezar |
+| Sandbox WASM local | Sin servicios externos, sin rate limits, sin costos por ejecucion |
+| Bootstrap admin via env | Patron de inicializacion idempotente al arranque |
+| Subdominio vs dominio custom | Subdominio es gratis y suficiente para empezar |
 | DNS y propagacion | Cambios DNS tardan en propagarse globalmente |
 | SSL automatico | Vercel + Let's Encrypt = HTTPS sin configurar nada |
+| Aislamiento dev/prod | BDs separadas con usuarios y passwords distintos |

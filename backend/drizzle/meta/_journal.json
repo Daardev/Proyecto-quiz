@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785462866863,
+      "tag": "0000_brave_giant_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785467542518,
+      "tag": "0001_redundant_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1754000000000,
+      "tag": "0002_quiz_persistence",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1755000000000,
+      "tag": "0003_quiz_question_attempts_count",
+      "breakpoints": true
+    }
+  ]
+}

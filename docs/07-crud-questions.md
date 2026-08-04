@@ -1,35 +1,35 @@
 # Fase 7: CRUD de Preguntas Manuales
 
 ## Objetivo
-Crear un sistema para agregar y gestionar preguntas de quiz manualmente en la base de datos. Las preguntas se crean por el administrador y se almacenan para que el sistema las sirva a los usuarios.
+Crear un sistema para agregar y gestionar preguntas de quiz manualmente en la base de datos. Las preguntas se crean por el administrador y se almacenan para que el sistema las sirva a los usuarios. **Modelo simplificado**: cada pregunta tiene `language`, `type`, contenido según el tipo. NO hay `categoryId` ni `difficulty`.
 
 ---
 
 ### Paso 1: Crear esquema de preguntas seed
 
 Que hacer:
-1. Crear una tabla de seed en src/seeds/ o un archivo JSON con preguntas de ejemplo
-2. Cada pregunta debe tener: title description difficulty starterCode testsTemplate categoryId
-3. Empezar con 5-10 preguntas por categoria como minimo
-4. Cada pregunta debe tener testsTemplate con al menos 2-3 tests
+1. Crear `src/seeds/questions-batch.json` con preguntas que tengan `language` (`'javascript'` o `'sql'`) y `type` (`'code'` o `'multiple_choice'`)
+2. Cada pregunta debe tener: title description, más campos según el tipo:
+   - `code`: starterCode + tests (input/expected pairs)
+   - `multiple_choice`: options (array) + correctOption (índice 0-based)
+3. Empezar con 5-10 preguntas por lenguaje como minimo
+4. Cada pregunta debe tener al menos 2-3 tests
 
 Pistas:
-- El seed es la forma mas rapida de tener datos para probar. Luego puedes crear un endpoint CRUD o un script para agregar mas.
-- Las preguntas seed deben ser realistas y tener tests que funcionen. Si los tests fallan el usuario va a pensar que el sistema esta roto.
-- Organiza las preguntas por tecnologia y categoria para facilitar la insercion.
-- El campo hash se calcula automaticamente (title + description). No lo pongas en el seed manualmente, calculalo al insertar.
+- El seed es la forma mas rapida de tener datos para probar.
+- El campo hash se calcula automaticamente (title + description) al insertar.
+- `language` agrupa todas las preguntas. No hay sub-categorías.
 
 Que estudiar:
 - Estructura de datos para preguntas de programacion
-- Como diseñar testsTemplate: input vs expected vs description
-- Diferencia entre tests unitarios y tests de integracion para quizzes
+- Como diseñar tests: input vs expected
 
 ---
 
 ### Paso 2: Crear funcion de insercion de preguntas
 
 Que hacer:
-En src/seeds/seed.js (o un archivo dedicado) crear funcion addQuestions(questions) que:
+En `src/seeds/wipe-and-seed.js` (o un archivo dedicado) crear funcion `addQuestions(questions)` que:
 1. Reciba un array de objetos con la estructura de pregunta
 2. Para cada pregunta:
    - Calcular hash MD5 de title + description

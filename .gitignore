@@ -1,23 +1,79 @@
-# Backend (cuando se cree)
-backend/node_modules/
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Entornos
+.env
+.env.*
+!.env.example
 backend/.env
 backend/.env.local
+backend/.env.development
+backend/.env.test
 backend/.env.production
-backend/*.log
-backend/drizzle/*.sql
+!backend/.env.example
 
-# Frontend (cuando se cree)
-frontend/node_modules/
-frontend/.env
-frontend/.env.local
-frontend/*.log
+# Logs y dumps
+*.log
+logs/
+*.dump
 
-# OS
+# Criptografía / credenciales
+*.key
+*.pem
+*.crt
+*.cer
+*.pfx
+*.p12
+*.keystore
+credentials*
+credentials*.json
+service-account*.json
+*-firebase-adminsdk*.json
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.netrc
+.npmrc
+
+# Build / cache
+dist/
+build/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+.turbo/
+.svelte-kit/
+.vercel/
+coverage/
+.nyc_output/
+.pytest_cache/
+
+# Capturas y binarios de debug
+backend/tests/debug-*.png
+backend/tests/debug-*.jpg
+
+# Banco de certificación (no publicable) y scripts one-off del parser
+backend/src/seeds/parser/
+
+# Backups locales y one-offs del backend
+backend/backups/
+backend/scripts/
+backend/_chk.cjs
+backend/debug-categories.js
+backend/src/seeds/questions-batch.json.bak
+
+# OS / editores
 .DS_Store
 Thumbs.db
-
-# Editores
+desktop.ini
 .vscode/
 .idea/
 *.swp
 *.swo
+*~

@@ -1,0 +1,87 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      <a href="/admin">⚙ Panel</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2>Dashboard admin</h2>
+    <a href="/admin/new?return={{returnUrlEncoded}}" class="btn">+ Nueva pregunta</a>
+  </div>
+
+  <p class="muted">Lista de preguntas registradas en la plataforma.</p>
+
+  <form method="GET" action="/admin" class="row" style="margin-top:1rem;">
+    <div class="form-group">
+      <label>Lenguaje</label>
+      <select name="language">
+        <option value="">Todos</option>
+        {{#each languages}}
+          <option value="{{this}}" {{#ifEquals ../filters.language this}}selected{{/ifEquals}}>{{this}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Tipo</label>
+      <select name="type">
+        <option value="">Todos</option>
+        <option value="code" {{#ifEquals filters.type 'code'}}selected{{/ifEquals}}>💻 Código</option>
+        <option value="multiple_choice" {{#ifEquals filters.type 'multiple_choice'}}selected{{/ifEquals}}>☑ Selección</option>
+      </select>
+    </div>
+    <div class="form-group" style="display:flex; align-items:flex-end; gap:0.5rem;">
+      <button type="submit">Filtrar</button>
+      {{#if (or filters.language filters.type)}}
+        <a href="/admin" class="btn secondary">Resetear</a>
+      {{/if}}
+    </div>
+  </form>
+
+  {{#if questions.length}}
+    <table class="dashboard-table">
+      <thead>
+        <tr>
+          <th class="col-id">ID</th>
+          <th>Título</th>
+          <th class="col-tipo">Tipo</th>
+          <th>Lenguaje</th>
+          <th class="col-sol">Solución</th>
+          <th class="col-actions">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each questions}}
+          <tr>
+            <td class="col-id">#{{this.id}}</td>
+            <td>{{this.title}}</td>
+            <td class="col-tipo">
+              {{#ifEquals this.type 'multiple_choice'}}<span class="badge">☑ seleccion</span>{{/ifEquals}}
+              {{#ifEquals this.type 'code'}}<span class="badge">💻 Código</span>{{/ifEquals}}
+            </td>
+            <td>{{this.language}}</td>
+            <td class="col-sol">
+              {{#if this.hasSolution}}
+                <span class="sol-yes" title="Tiene solución definida">✓</span>
+              {{else}}
+                <span class="sol-no" title="Sin solución">✗</span>
+              {{/if}}
+            </td>
+            <td class="col-actions">
+              <a href="/admin/{{this.id}}/edit?return={{../returnUrlEncoded}}">Editar</a>
+              <form action="/admin/{{this.id}}/delete" method="POST" style="display:inline" onsubmit="return confirm('¿Eliminar esta pregunta?')">
+                <button type="submit" class="secondary">Eliminar</button>
+              </form>
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  {{else}}
+    <p class="muted">No hay preguntas que coincidan con los filtros. <a href="/admin/new">Crea la primera</a>.</p>
+  {{/if}}
+</div>

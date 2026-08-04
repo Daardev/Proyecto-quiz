@@ -1,101 +1,220 @@
-# Fase 4: Auth Module - Google OAuth
+# Fase 5: Auth Module - Username + Password
 
 ## Objetivo
-Implementar login con Google para que los usuarios puedan autenticarse. Usaras Passport.js con la estrategia de Google OAuth 2.0 y sesiones del lado servidor (la configuracion del session store externo va en la Fase 6).
+Implementar registro y login con username + password usando bcrypt para hashear credenciales y sesiones propias (express-session + cookie en memoria) para mantener al usuario autenticado entre requests. La migración a session store Postgres se hace en la Fase 6.
 
 ---
 
 ### Paso 1: Instalar dependencias de auth
 
 Que hacer:
-- npm install passport passport-google-oauth20 express-session
+- `npm install bcrypt express-session`
+
+> **Nota**: Aunque `connect-pg-simple` aparece en `package.json` desde esta fase, **no se configura en `app.js` todavia**. Aqui usamos el store por defecto (en memoria). El switch a Postgres es la Fase 6.
 
 Pistas:
-- passport es el framework de autenticacion. Soporta mas de 500 estrategias (Google GitHub Facebook local JWT etc).
-- passport-google-oauth20 es la estrategia especifica para Google OAuth 2.0. No confundir con passport-google-oauth (version antigua OAuth 1.0).
-- express-session maneja sesiones del lado servidor. El store por defecto es memoria.
-- `connect-pg-simple` se instala en la Fase 6 cuando configures el session store con Postgres.
+- `bcrypt` hashea passwords con salting automatico. 10 rounds es el balance entre seguridad y performance para apps pequeñas/medianas.
+- `express-session` maneja sesiones del lado servidor. El store por defecto es memoria (suficiente para desarrollo).
+- `connect-pg-simple` se configura en la Fase 6 (migración a session store Postgres).
+- No usamos Passport ni OAuth. La logica de auth vive en `auth.service.js` y se monta con un middleware custom en `app.js`.
 
 Que estudiar:
-- Passport.js: que es y como funciona (estrategia serialize deserialize)
-- Google OAuth 2.0: flujo de 3 pasos
-- express-session: almacenamiento en memoria (Fase 5) vs store externo (Fase 6)
+- bcrypt: como funciona el salting, rounds, comparacion de hashes
+- express-session: almacenamiento en memoria vs store externo (Fase 6)
+- Cookies de sesion: secure httpOnly sameSite
 
 ---
 
-### Paso 2: Configurar Google Cloud Console
+### Paso 2: Diseno de la tabla `users`
 
 Que hacer:
-1. Ir a Google Cloud Console
-2. Crear un proyecto nuevo (o usar uno existente)
-3. Ir a APIs and Services Credentials
-4. Crear OAuth 2.0 Client ID (tipo Web application)
-5. Agregar Authorized redirect URIs: http://localhost:3001/api/auth/google/callback
-6. Copiar Client ID y Client Secret al .env
+La tabla `users` ya esta definida en la Fase 3. Verificar que tenga los campos:
+
+```sql
+users: id, username (unique), email (unique), name (default ''), password_hash, role (default 'user'), created_at
+```
+
+Validaciones en el controller:
+- `username`: 3-30 chars, regex `^[a-zA-Z0-9_]+$`
+- `email`: formato valido (regex simple)
+- `password`: minimo 8 chars
+- `name`: opcional (default = username)
 
 Pistas:
-- En desarrollo la URI de redirect debe usar http://localhost (no https). En produccion debe ser HTTPS.
-- Google no permite localhost con puerto en algunos casos. Si tienes problemas usa http://127.0.0.1:3001/api/auth/google/callback.
-- El Client Secret es sensible. No lo compartas ni lo subas a Git.
+- `username` y `email` son UNIQUE en BD. Las inserciones duplicadas fallan con error 23505 de Postgres.
+- `password_hash` es varchar(255) para acomodar el output de bcrypt (60 chars normalmente pero预留 margen).
+- `name` puede ser vacio al inicio; el usuario lo llena despues si quiere.
 
 Que estudiar:
-- Google Cloud Console: OAuth consent screen credentials scopes
-- Redirect URIs: por que Google las exige (seguridad)
-- Diferencia entre Client ID y Client Secret
+- Constraints UNIQUE y manejo de errores de duplicacion
+- Validacion de inputs en backend (nunca confiar en el cliente)
 
 ---
 
-### Paso 3: Configurar Passport Google Strategy
+### Paso 3: Crear `auth.service.js`
 
 Que hacer:
-Crear src/config/passport.js con:
-1. Importar Passport y GoogleStrategy
-2. Configurar estrategia con clientID clientSecret callbackURL
-3. En la funcion verify:
-   - Recibir accessToken refreshToken profile done
-   - Buscar usuario por googleId con db.query.users.findFirst()
-   - Si no existe crear usuario nuevo con db.insert(users).values(...).returning()
-   - Llamar done(null, user) si exito done(error) si falla
-4. Configurar serializeUser: guardar user.id en la sesion
-5. Configurar deserializeUser: buscar usuario por ID en BD y pasarlo a done
+Crear `src/services/auth.service.js` con las funciones core:
+
+1. `hashPassword(password)` - retorna bcrypt hash con 10 rounds
+2. `verifyPassword(password, hash)` - bcrypt.compare
+3. `findUserByUsername(username)` - query
+4. `findUserByEmail(email)` - query
+5. `findUserById(id)` - query
+6. `createUser({ username, email, name, password, role })` - hashea password e inserta
+7. `sanitizeUser(user)` - quita `passwordHash` del objeto retornado
+8. `bootstrapAdmin()` - crea o promueve admin si `ADMIN_USERNAME`/`ADMIN_PASSWORD` estan en `.env`
+
+Fragmento clave (la unica linea especifica):
+```js
+const passwordHash = await bcrypt.hash(password, 10);
+```
 
 Pistas:
-- profile.emails[0].value y profile.displayName son los datos que Google devuelve en el perfil. Revisa la estructura completa con console.log(profile).
-- El callback verify es donde decides si el usuario existe o lo creas. No es un middleware Express es un callback interno de Passport.
-- serializeUser solo guarda el ID en la sesion (no el objeto completo). Esto mantiene la sesion liviana.
-- deserializeUser se ejecuta en cada request que tenga sesion. Hace una query a BD cada vez - considera si necesitas cachearlo.
+- `sanitizeUser` es fundamental: nunca devolver `passwordHash` al cliente, ni siquiera encriptado.
+- `bootstrapAdmin` se llama una sola vez al arrancar el server. Si el admin ya existe, lo promueve a `role='admin'` si no lo es.
+- Si `ADMIN_USERNAME` o `ADMIN_PASSWORD` no estan en `.env`, bootstrap no hace nada (loggea mensaje).
+- El bootstrap es async. No bloquea el arranque del server (puede terminar despues de que `app.listen` corra).
 
 Que estudiar:
-- Passport strategy: que recibe y que debe retornar el callback verify
-- serializeUser / deserializeUser - por que se separan
-- Google profile structure: emails displayName photos id
+- Patron Service: separar logica de negocio de HTTP
+- Async/await con Drizzle queries
+- Patron Bootstrap: inicializacion idempotente al arranque
 
 ---
 
-### Paso 4: Configurar sesion en app.js
+### Paso 4: Crear `auth.controller.js`
 
 Que hacer:
-En app.js:
-1. Importar session de express-session y passport
-2. Agregar middleware de session ANTES de passport (configuracion basica con memoria; la migracion a store Postgres va en la Fase 6):
-   - secret: de process.env.SESSION_SECRET
-   - resave: false
-   - saveUninitialized: false
-   - cookie.maxAge: 24 horas en milisegundos
-   - cookie.secure: true solo en produccion (usar process.env.NODE_ENV === 'production')
-3. Agregar app.use(passport.initialize())
-4. Agregar app.use(passport.session())
-5. Agregar middleware global para que las vistas Handlebars tengan acceso al usuario actual:
-   - `res.locals.user = req.user` (puede ser null si no esta logueado)
-   - `res.locals.isAdmin = req.user?.role === 'admin'`
-   - Esto debe ir DESPUES de passport.session() para que req.user este disponible
+Crear `src/controllers/auth.controller.js` con las 4 funciones HTTP. **Importante**: cada funcion debe discriminar si el cliente quiere HTML o JSON usando `req.accepts(['html', 'json']) === 'html'`. Esto es porque los formularios de `login.hbs` y `register.hbs` (Fase 10) hacen POST normal al mismo endpoint, no fetch.
 
-Fragmento clave (session basico con memoria):
-```javascript
-import session from 'express-session';
+1. `register(req, res)`:
+   - Valida username/email/password (regex)
+   - Verifica que username y email no existan (409 si duplicado)
+   - Crea usuario via `auth.service.createUser`
+   - Establece `req.session.userId` (auto-login)
+   - **HTML**: redirect a `postLoginRedirect(user, req)` (ver sub-sección Helper)
+   - **JSON**: retorna 201 con `{ user }` (sanitizado)
 
+2. `login(req, res)`:
+   - Recibe `{ username, password }`
+   - Busca usuario por username
+   - Verifica password con bcrypt
+   - Si OK: establece sesion y:
+     - **HTML**: redirect a `postLoginRedirect(user, req)`
+     - **JSON**: retorna 200 con `{ user }` (sanitizado)
+   - Si falla: error generico (no decir si es user o password) — renderiza `login.hbs` con error **o** retorna 401 JSON
+
+3. `logout(req, res)`:
+   - `req.session.destroy()` + `res.clearCookie('connect.sid')`
+   - **HTML**: redirect a `/`
+   - **JSON**: `{ success: true }`
+
+4. `me(req, res)`:
+   - Si `req.user` existe, retorna `{ user }` (200)
+   - Si no, retorna 401 JSON
+
+Fragmento clave (discriminar entre form y JSON):
+```js
+const wantsHtml = req.accepts(['html', 'json']) === 'html';
+
+if (wantsHtml) {
+  return res.redirect(postLoginRedirect(user, req));
+}
+res.status(201).json({ user });
+```
+
+Fragmento clave (logout):
+```js
+req.session.destroy(() => {
+  res.clearCookie('connect.sid');
+  if (req.accepts('html')) return res.redirect('/');
+  res.json({ success: true });
+});
+```
+
+Pistas:
+- En login, el mensaje de error es siempre generico ("credenciales invalidas") para no exponer cual campo fallo.
+- `req.session.userId` se setea en login/register. El middleware global en `app.js` lee ese ID y carga `req.user`.
+- El controller de register SIEMPRE setea la sesion (auto-login despues de registrar). Asi el usuario no tiene que loguearse dos veces.
+- Renderizar `login.hbs`/`register.hbs` desde el controller es un workaround pragmatic para no tener endpoints separados (form POST vs API JSON). Las vistas usan `res.render()` con `{ error, values }`.
+
+Que estudiar:
+- Discriminacion de contenido: `req.accepts(['html', 'json'])`
+- `req.accepts` retorna el tipo preferido (en orden de preferencia); si el cliente manda `Accept: text/html` lo agarra
+- Status codes correctos: 201 (created), 200 (ok), 400 (validation), 401 (credenciales), 409 (duplicado)
+- Auto-login post-register: patron UX comun
+- Progressive enhancement: forms funcionan sin JS, JS los mejora con fetch
+
+---
+
+#### Sub-sección: Helper `postLoginRedirect(user, req)`
+
+Que hacer:
+Crear un helper en `auth.controller.js` que decida a donde redirigir tras un login/register exitoso, en funcion del `role` del usuario y un parametro `?redirect=` opcional.
+
+```js
+function postLoginRedirect(user, req) {
+  const explicit = typeof req.body?.redirect === 'string' && req.body.redirect.startsWith('/') ? req.body.redirect : null;
+  if (explicit) return explicit;
+  if (user.role === 'admin') return '/admin';
+  return '/';
+}
+```
+
+Pistas:
+- `req.body.redirect` viene de un input hidden en `login.hbs` que se llena desde `?redirect=` en la URL (ej: si el usuario intenta acceder a `/profile` sin estar logueado, el middleware lo manda a `/login?redirect=/profile`, y el form rellena el hidden).
+- Validar que `redirect` empieza con `/` evita open redirects: `redirect=https://evil.com` seria un ataque.
+- Admin va a `/admin` por defecto; usuario normal va a `/`.
+- Si `redirect` es vacio o no es string, cae al default por role.
+
+Que estudiar:
+- Open redirect attacks: por que validar prefijo `/`
+- Query string preservation en redirects: `encodeURIComponent` en el emisor, `decodeURIComponent` en el receptor (en este caso no se decodifica porque solo se valida el path)
+
+---
+
+### Paso 5: Crear `auth.routes.js`
+
+Que hacer:
+Crear `src/routes/auth.routes.js` con los 4 endpoints:
+
+```js
+router.post('/register', authCtrl.register);
+router.post('/login', authCtrl.login);
+router.post('/logout', authCtrl.logout);
+router.get('/me', authCtrl.me);
+```
+
+Pistas:
+- Las rutas se montan en `app.use('/api/auth', authRoutes)`.
+- Los endpoints `/register` y `/login` son PUBLICOS. `/logout` puede ser publico (si no hay sesion destruye igual). `/me` requiere sesion valida pero no falla con 401 explicitamente — el middleware global setea `req.user = null` y el controller lo maneja.
+
+Que estudiar:
+- Express Router: composicion modular de rutas
+- Rutas publicas vs protegidas
+
+---
+
+### Paso 6: Configurar sesion y middleware en `app.js`
+
+Que hacer:
+En `app.js`:
+
+1. Importar `session` de `express-session`
+2. Configurar `app.use(session({...}))` ANTES del middleware de auth (secret, resave, saveUninitialized, cookie). **Store en memoria por defecto** — la migración a Postgres es la Fase 6.
+3. Agregar middleware global DESPUES de session que:
+   - Lee `req.session.userId`
+   - Si existe: busca user en BD, setea `req.user` (sanitizado)
+   - Si no existe: `req.user = null`
+   - Setea `res.locals.user` y `res.locals.isAdmin`
+4. Llamar `bootstrapAdmin()` al inicio del archivo (no bloquea el listen) — ver Fase 1 sub-sección "`bootstrapAdmin()`"
+5. Montar `app.use('/api/auth', authRoutes)`
+
+Fragmento clave (configuracion basica):
+```js
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'dev-only-secret-replace-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -105,129 +224,190 @@ app.use(session({
 }));
 ```
 
-Fragmento clave (res.locals):
-```javascript
-app.use((req, res, next) => {
-  res.locals.user = req.user || null;
-  res.locals.isAdmin = req.user?.role === 'admin';
+> **Importante**: NO uses `connect-pg-simple` aqui. Este paso es solo `express-session` con store en memoria. El switch a Postgres store (con `pool` compartido de `config/database.js`) es la **Fase 6**.
+
+Fragmento clave (middleware custom que reemplaza a Passport):
+```js
+app.use(async (req, res, next) => {
+  try {
+    if (req.session?.userId) {
+      const user = await findUserById(req.session.userId);
+      req.user = user ? sanitizeUser(user) : null;
+      if (!user) req.session.userId = null;
+    } else {
+      req.user = null;
+    }
+    res.locals.user = req.user;
+    res.locals.isAdmin = req.user?.role === 'admin';
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+```
+
+Pistas:
+- El orden es CRITICO: session → middleware de carga de user → rutas. Si pones el middleware antes de session, `req.session` no existe.
+- `secure: process.env.NODE_ENV === 'production'` — en desarrollo (HTTP) la cookie se envia; en produccion (HTTPS) se requiere secure.
+- El middleware es async porque la query a BD lo es. Express 5 soporta middlewares async con try/catch.
+- `req.user` se setea en CADA request (no solo en login). Esto permite que el navbar (Fase 10) siempre sepa si hay usuario logueado.
+- El middleware NO rechaza requests sin auth (eso lo hace `isAuthenticated` despues).
+- Store en memoria tiene una limitación: cada restart del server borra todas las sesiones. No apto para Vercel serverless (Fase 6 lo arregla).
+
+Que estudiar:
+- Middlewares async en Express 5
+- Patron de "cargar usuario en cada request" (vs Passport que lo hace automaticamente)
+- Orden de middlewares y debugging
+- Diferencia entre session store en memoria vs persistente (Fase 6)
+
+---
+
+### Paso 7: Crear middleware `auth.middleware.js`
+
+Que hacer:
+Crear `src/middleware/auth.middleware.js`. Misma discriminacion HTML/JSON que el controller: cuando el cliente quiere HTML, redirigir a `/login?redirect=<originalUrl>` en vez de devolver 401 JSON.
+
+```js
+export function isAuthenticated(req, res, next) {
+  if (req.user) return next();
+  const wantsHtml = req.accepts(['html', 'json']) === 'html';
+  if (wantsHtml) {
+    const redirect = encodeURIComponent(req.originalUrl || '/');
+    return res.redirect(`/login?redirect=${redirect}`);
+  }
+  res.status(401).json({ error: 'no autenticado' });
+}
+
+export function isAdmin(req, res, next) {
+  if (req.user?.role === 'admin') return next();
+  const wantsHtml = req.accepts(['html', 'json']) === 'html';
+  if (wantsHtml) {
+    return res.status(403).render('pages/index', {
+      technologies: [],
+      error: 'Acceso restringido a administradores',
+    });
+  }
+  res.status(403).json({ error: 'acceso restringido a administradores' });
+}
+
+export function optionalAuth(req, res, next) {
   next();
-});
+}
 ```
 
 Pistas:
-- En esta fase usamos session en memoria (suficiente para desarrollo local). En la Fase 6 migraremos a store Postgres.
-- El orden es IMPORTANTE: session luego passport.initialize luego passport.session luego el middleware de res.locals. Si pones passport antes de session no va a encontrar la sesion. Si pones res.locals antes de passport.session, req.user sera siempre null.
-- resave: false evita guardar la sesion si no hubo cambios. Mejora performance.
-- saveUninitialized: false evita crear sesiones para usuarios no autenticados (GDPR performance).
-- secure: false en desarrollo porque no tienes HTTPS. En produccion debe ser true o las cookies no se enviaran.
-- `res.locals` es la forma estandar de pasar datos a TODAS las vistas sin tener que incluirlos en cada `res.render()`. El navbar (Fase 12) usa `user` y `isAdmin` de aca.
-- El middleware debe ir DESPUES de las rutas que requieren login (como /api/auth/google) pero ANTES de las rutas que renderizan vistas.
+- `isAuthenticated` SIEMPRE va antes de cualquier ruta protegida. Sin el, `req.user` no existe.
+- `isAdmin` SIEMPRE va DESPUES de `isAuthenticated`. Si va solo, `req.user` es undefined y siempre rechaza con 403.
+- `optionalAuth` es solo documentacion: indica que la ruta puede tener o no usuario. No hace nada.
+- El redirect a `/login?redirect=` preserva la URL original para que tras login el usuario vuelva a donde queria ir. El helper `postLoginRedirect` de la sub-sección "Helper `postLoginRedirect`" consume ese parametro.
+- `encodeURIComponent` evita que la URL original rompa el query string del redirect.
+- Renderizar `pages/index` con error en el caso de admin-denied es para mostrar el error en el contexto de la UI (sin redirigir a una URL que el usuario no solicito).
 
 Que estudiar:
-- express-session options: secret resave saveUninitialized cookie
-- Cookie flags: secure httpOnly sameSite - que significa cada uno
-- res.locals en Express: variables globales disponibles en vistas Handlebars
-- Orden de middlewares: por que el orden importa y como debuggearlo
+- Patron de middleware en cadena
+- Autenticacion (quien es) vs autorizacion (que puede hacer)
+- RBAC basico con Express
+- UX de redirects preservados: `?redirect=` en login
 
 ---
 
-### Paso 5: Crear rutas de auth
+### Paso 8: Probar el flujo completo con curl
 
 Que hacer:
-Crear auth.routes.js con:
-1. GET /google -> passport.authenticate('google', { scope: ['profile', 'email'] }) redirige a Google
-2. GET /google/callback -> passport.authenticate('google', { failureRedirect: '/login?error=true', successRedirect: '/' }) Google redirige aqui despues del login
-3. GET /me -> devuelve req.user como JSON si existe o 401 si no
-4. POST /logout -> comportamiento dual:
-   - Si viene de un form HTML (header `Accept: text/html`): `req.logout(callback)` y `res.redirect('/')`
-   - Si viene de fetch/JSON (header `Accept: application/json`): `req.logout(callback)` y `res.json({ success: true })`
+1. Iniciar el server (`npm run dev`)
+2. Verificar que el bootstrap creo el admin (ver logs)
+3. Probar register:
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"username":"alice","email":"alice@x.com","password":"alicepass"}'
+   ```
+4. Probar login (admin):
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/login \
+     -H "Content-Type: application/json" \
+     -c cookies.txt \
+     -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}'
+   ```
+5. Probar me (con cookie):
+   ```bash
+   curl http://localhost:3001/api/auth/me -b cookies.txt
+   ```
+6. Probar logout:
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/logout -b cookies.txt -c cookies.txt
+   ```
+7. Verificar que despues de logout `/me` devuelve 401
 
-Fragmento clave (discriminar entre form y JSON):
-```javascript
-req.logout((err) => {
-  if (err) return next(err);
-  if (req.accepts('html')) return res.redirect('/');
-  res.json({ success: true });
-});
+Errores comunes:
+- 401 en /me: el cookie no se esta enviando (verifica `-b cookies.txt`)
+- "credenciales invalidas" en login: password incorrecto o usuario no existe
+- 409 en register: username o email duplicado
+
+Que estudiar:
+- Testing de APIs con curl
+- Manejo de cookies con `-b` y `-c` flags
+
+---
+
+### Paso 9: Verificar discriminador HTML/JSON en auth
+
+Que hacer:
+Probar el mismo endpoint con dos clientes diferentes para confirmar que la discriminacion funciona:
+
+**Test 1: cliente que quiere HTML (navegador)**
+1. Iniciar el server (`npm run dev`)
+2. Abrir `http://localhost:3001/login` en el navegador
+3. Llenar el form con credenciales de admin y submitear
+4. Esperar: redirect a `/admin` (porque el admin tiene `role='admin'`, ver `postLoginRedirect`)
+
+**Test 2: cliente que quiere JSON (curl)**
+1. Probar login:
+```bash
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}'
 ```
-
-Pistas:
-- scope define que informacion pides. 'profile' da nombre foto 'email' da email.
-- failureRedirect es a donde va el usuario si el login falla. Como aun no tienes pagina de login puedes redirigir a / con un parametro de error.
-- req.logout() requiere un callback (Passport 0.7+). Versiones anteriores usaban req.logout() sin callback.
-- `req.accepts('html')` retorna truthy si el cliente prefiere HTML (navegadores con forms). Esto permite tener UN solo endpoint que sirva ambos casos.
-- El navbar (Fase 10 Paso 7) usa form POST que sera redirigido. Un futuro cliente fetch recibira JSON.
-- Montar rutas en app.use('/api/auth', authRoutes).
-
-Que estudiar:
-- Passport authenticate() - como middleware opciones
-- Google OAuth scope - que datos pides y por que
-- req.logout() vs req.session.destroy() - diferencias
-- Content negotiation: como Express decide entre HTML y JSON segun headers
-- HTTP Accept header: que es y como lo usa req.accepts()
-
----
-
-### Paso 6: Crear middleware de autenticacion
-
-Que hacer:
-Crear `src/middleware/auth.middleware.js`:
-1. `isAuthenticated`: si `req.user` existe llama `next()`. Si no responde 401 JSON.
-2. `optionalAuth`: en realidad no hace nada solo llama `next()`. Es explicita para indicar que una ruta puede tener o no usuario.
-
-Crear `src/middleware/isAdmin.js` (usado para rutas del dashboard admin):
-1. `isAdmin`: si `req.user?.role === 'admin'` llama `next()`. Si no responde 403 con `{ error: 'Acceso restringido a administradores' }`.
-
-Fragmento clave (la condicion):
-```javascript
-if (req.user?.role !== 'admin') return res.status(403).json({ error: '...' });
+2. Esperar: 200 con `{ user: { ..., role: 'admin' } }` (sin redirect)
+3. Probar `me` con la cookie:
+```bash
+curl http://localhost:3001/api/auth/me -b cookies.txt
 ```
+4. Esperar: 200 con `user.role === 'admin'`
+
+**Test 3: cliente HTML intenta acceder a ruta protegida sin login**
+1. Abrir `http://localhost:3001/admin` en el navegador (sin estar logueado)
+2. Esperar: redirect a `/login?redirect=%2Fadmin`
 
 Pistas:
-- Passport agrega req.user AUTOMATICAMENTE si hay una sesion valida. No necesitas hacer nada adicional.
-- isAuthenticated tambien se puede escribir con req.isAuthenticated() (metodo que Passport agrega a req).
-- optionalAuth sirve mas como documentacion que como funcionalidad. Util para rutas donde el usuario es opcional.
-- isAdmin SIEMPRE debe ir DESPUES de isAuthenticated en la cadena de middlewares. Si va solo, req.user sera undefined y siempre dara 403.
-- El middleware isAdmin es un patron de "autorizacion" (que puede hacer) vs "autenticacion" (quien es). Separarlos es buena practica.
+- El discriminador `req.accepts(['html', 'json'])` confía en el header `Accept` que el cliente envía. Los navegadores siempre mandan `Accept: text/html,...` por defecto; curl sin `-H 'Accept: ...'` no manda Accept, asi que `req.accepts` puede retornar `false` o el primer tipo disponible (depende de la versión de Express).
+- Si curl no devuelve lo esperado, agregar `-H 'Accept: application/json'` para forzar JSON.
+- El navbar (Fase 10) muestra "Admin" en el menu solo si `res.locals.isAdmin` es true.
+- Para acceder a `/admin` (Fase 14) el usuario debe estar logueado Y tener role='admin'.
 
 Que estudiar:
-- Middleware pattern: `(req res next) => { ... }`
-- req.user req.isAuthenticated() req.logout() - metodos que Passport agrega a req
-- Middleware de proteccion vs middleware opcional
-- Autenticacion vs autorizacion: que es cada una y por que se separan
-- RBAC (Role-Based Access Control): patron de autorizacion basico
-
----
-
-### Paso 7: Probar flujo completo
-
-Que hacer:
-1. Iniciar servidor
-2. Abrir http://localhost:3001/api/auth/google en navegador
-3. Deberia redirigirte a Google -> pedir login -> redirigir de vuelta a /
-4. Probar GET /api/auth/me - debe devolver tus datos
-5. Probar POST /api/auth/logout - debe cerrar sesion
-6. Verificar que despues de logout /api/auth/me devuelve 401
-
-Pistas:
-- Si Google muestra Error: redirect_uri_mismatch el URI en Google Console no coincide exactamente con el callbackURL de Passport.
-- Si despues del login te redirige a /login?error=true algo fallo en el callback (revisar logs del servidor).
-- Las cookies de sesion expiran despues de 24h (configurable). Si cierras el navegador y vuelves la sesion deberia persistir (depende de cookie config).
-
-Que estudiar:
-- Flujo OAuth completo: navegador -> Google -> callback -> sesion
-- Debugging OAuth: como ver errores de Google (consulta logs network tab)
+- Flujo de autorizacion completo: login → sesion → middleware → navbar/ruta protegida
+- Content negotiation: como Express decide entre HTML y JSON
+- `req.accepts` vs `req.is()`: el primero prefiere, el segundo verifica
 
 ---
 
 ## Checklist de verificacion
 
-- [ ] Google Cloud Console configurado con redirect URI correcto
-- [ ] /api/auth/google redirige a Google
-- [ ] Login con Google exitoso redirige de vuelta
-- [ ] /api/auth/me devuelve usuario autenticado
-- [ ] /api/auth/logout cierra sesion
-- [ ] Rutas protegidas con isAuthenticated devuelven 401 sin sesion
+- [ ] `bcrypt` y `express-session` instalados
+- [ ] `auth.service.js` con 8 funciones (hash, verify, find*, create, sanitize, bootstrap)
+- [ ] `auth.controller.js` con 4 funciones HTTP (register, login, logout, me)
+- [ ] `auth.routes.js` con 4 endpoints
+- [ ] `auth.middleware.js` con `isAuthenticated`, `isAdmin`, `optionalAuth`
+- [ ] `app.js` configura session + middleware custom de carga de user + `bootstrapAdmin()`
+- [ ] `/api/auth/register` crea usuario con password hasheado
+- [ ] `/api/auth/login` verifica password y crea sesion (cookie)
+- [ ] `/api/auth/me` lee sesion y devuelve usuario
+- [ ] `/api/auth/logout` destruye sesion y limpia cookie
+- [ ] Admin bootstrap funciona si `ADMIN_USERNAME`/`ADMIN_PASSWORD` en `.env`
+- [ ] Sesion persiste entre requests (cookie)
+- [ ] Password nunca se expone en respuestas JSON
 
 ---
 
@@ -235,11 +415,12 @@ Que estudiar:
 
 | Error | Causa probable |
 |-------|----------------|
-| redirect_uri_mismatch | URI en Google Console no coincide |
-| Error 500 en callback | Fallo en deserializeUser |
-| req.user es undefined | Session no configurada |
-| Sesion no persiste | cookie sin maxAge |
-| Google no acepta localhost | Usa 127.0.0.1 en vez de localhost |
+| Login retorna 401 con password correcto | `bcrypt.compare` falla por mismatch de rounds o encoding |
+| Sesion no persiste entre requests | Cookie no se envia (sin `-b cookies.txt` en curl) o `secure: true` en dev (HTTP) |
+| 401 en /me con sesion valida | El middleware de carga de user no se ejecuto o `req.session.userId` es undefined |
+| Bootstrap admin no se crea | `ADMIN_USERNAME` o `ADMIN_PASSWORD` no estan en `.env` |
+| Register retorna 409 inmediato | Username o email ya registrados (unique constraint) |
+| `req.user` siempre undefined | session middleware no se configuro o esta en orden incorrecto |
 
 ---
 
@@ -247,8 +428,9 @@ Que estudiar:
 
 | Concepto | Por que es importante |
 |----------|----------------------|
-| Passport.js | Framework de autenticacion mas usado en Node |
-| OAuth 2.0 | Estandar de autenticacion delegada |
-| Session cookies | Persistencia de login entre requests |
-| serialize / deserialize | Puente entre sesion y datos de usuario |
-| Middleware de proteccion | Control de acceso a rutas |
+| bcrypt | Hashing de passwords con salting y rounds ajustables |
+| express-session | Sesiones con cookie firmadas (express-session crea la cookie `connect.sid`) |
+| Middleware custom de carga de user | Reemplaza a Passport: simple, sin dependencias extra |
+| Bootstrap admin | Inicializacion idempotente al arranque |
+| Auto-login post-register | Patron UX para evitar doble paso |
+| Sanitizacion de user | Nunca exponer `passwordHash` al cliente |

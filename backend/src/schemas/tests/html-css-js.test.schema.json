@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proyecto-quiz.local/schemas/tests/html-css-js.test.schema.json",
+  "title": "HTML/CSS/JS markup tests file",
+  "description": "Schema for backend/src/seeds/tests/html-css-js.json. Keys are question ids. Each value is an array of markup test entries evaluated by runMarkupCheck (regex-based against the user's HTML).",
+  "type": "object",
+  "additionalProperties": { "$ref": "#/$defs/tests" },
+  "$defs": {
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/test" }
+    },
+    "test": {
+      "type": "object",
+      "required": ["check", "input"],
+      "properties": {
+        "check": {
+          "type": "string",
+          "enum": ["hasElement", "hasStyle", "elementText", "hasAttribute", "hasClass", "hasId", "elementCount", "elementInside"],
+          "description": "Type of markup check to perform."
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tag or selector to match against the markup."
+        },
+        "input": { "type": "string" },
+        "expected": {
+          "description": "Expected value. Type depends on check: boolean for hasElement/hasClass/hasId, string for elementText/hasAttribute, number for elementCount. Unused for hasStyle."
+        },
+        "property": {
+          "type": "string",
+          "description": "CSS property name (required for hasStyle)."
+        },
+        "valueContains": {
+          "type": "string",
+          "description": "Substring expected in property value, case-insensitive (required for hasStyle)."
+        },
+        "attribute": {
+          "type": "string",
+          "description": "Attribute name (required for hasAttribute)."
+        },
+        "parent": {
+          "type": "string",
+          "description": "Parent tag name (required for elementInside)."
+        },
+        "child": {
+          "type": "string",
+          "description": "Child tag name that must exist inside parent (required for elementInside)."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "check": {
+                "not": { "const": "elementInside" }
+              }
+            }
+          },
+          "then": {
+            "required": ["selector"]
+          }
+        },
+        {
+          "if": { "properties": { "check": { "const": "hasStyle" } } },
+          "then": {
+            "required": ["property", "valueContains"]
+          }
+        },
+        {
+          "if": { "properties": { "check": { "const": "hasAttribute" } } },
+          "then": {
+            "required": ["attribute", "expected"]
+          }
+        },
+        {
+          "if": { "properties": { "check": { "const": "elementInside" } } },
+          "then": {
+            "required": ["parent", "child"]
+          }
+        }
+      ]
+    }
+  }
+}

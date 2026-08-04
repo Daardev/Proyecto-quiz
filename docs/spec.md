@@ -2,7 +2,7 @@
 
 ## 1. Visión General
 - **Nombre**: Quiz
-- **Descripción**: Plataforma de quizzes de programación con ejecución de código en sandbox y evaluación basada en tests predefinidos
+- **Descripción**: Plataforma de quizzes de programación con ejecución de código en sandbox y evaluación basada en tests predefinidos. Modelo simplificado: preguntas agrupadas por **lenguaje** (sin jerarquía de tecnologías ni niveles de dificultad).
 - **Plataforma**: Web
 - **Arquitectura**: SSR (Server-Side Rendering) con Handlebars. El backend Express renderiza HTML completo en cada request. El cliente solo aporta interactividad (Monaco Editor, timers) via modulos JS.
 - **Separación clara Backend/Frontend**: backend sirve vistas HBS renderizadas y assets estaticos. El frontend (`frontend/public/` y `frontend/src/`) contiene solo assets y modulos JS que el navegador carga.
@@ -21,8 +21,8 @@
 - **Framework**: Express + Express.Router
 - **Templates**: Handlebars
 - **Base de datos**: PostgreSQL + Drizzle ORM + Neon DB
-- **Auth**: Google OAuth + roles (user/admin)
-- **Sandbox**: Judge0 API (ejecución de código)
+- **Auth**: Username + Password (bcrypt) + sesiones propias + roles (user/admin)
+- **Sandbox**: WebAssembly en proceso (QuickJS para JavaScript/Node.js, PGlite para PostgreSQL/SQL)
 - **Admin dashboard**: panel web renderizado con Handlebars
 
 ## 3. Estructura del Proyecto
@@ -56,13 +56,13 @@ Quiz/
 │   │   │   ├── questions.controller.js
 │   │   │   ├── submissions.controller.js
 │   │   │   ├── scores.controller.js
-│   │   │   ├── admin.controller.js    # Dashboard admin
-│   │   │   └── profile.controller.js  # Panel de usuario
+│   │   │   ├── admin.controller.js
+│   │   │   └── profile.controller.js
 │   │   ├── middleware/
-│   │   │   ├── auth.middleware.js     # isAuthenticated + optionalAuth
-│   │   │   └── isAdmin.js            # Verifica role === 'admin'
+│   │   │   ├── auth.middleware.js     # isAuthenticated + isAdmin + optionalAuth
 │   │   ├── services/
-│   │   │   └── sandbox.service.js
+│   │   │   ├── auth.service.js        # hashPassword, verifyPassword, bootstrapAdmin
+│   │   │   └── sandbox.service.js     # Ejecuta codigo en QuickJS/PGlite
 │   │   ├── views/
 │   │   │   ├── layouts/
 │   │   │   │   └── main.hbs
@@ -89,54 +89,45 @@ Quiz/
 
 ## 4. Modelo de Base de Datos
 
-El sistema modela contenido (technologies, categories, questions), usuarios y partidas (users, quizzes, quiz_questions), resultados (submissions) y sesiones (session).
+**Diseño simplificado**: las preguntas tienen un campo `language` (`'javascript'` | `'sql'`) en lugar de la jerarquía `technology > category`. No hay niveles de dificultad.
 
 ```
-technologies (1) ──→ (N) categories (1) ──→ (N) questions
-                                                       ↑
-                                                       │
 users (1) ──→ (N) quizzes (1) ──→ (N) quiz_questions ──→ (N) submissions
+                                          ↓
+                                       (1) questions
 
 session (independiente — guarda las sesiones HTTP de usuarios autenticados)
 ```
 
-Las claves foraneas terminan en `_id` y apuntan al `id` de la tabla referenciada. El orden de creacion (resuelve dependencias) es: technologies, categories, users, questions, quizzes, quiz_questions, submissions, session.
+Las claves foraneas terminan en `_id` y apuntan al `id` de la tabla referenciada.
 
 ### Tablas
 
-**technologies** — areas grandes del quiz (JavaScript, Node.js, PostgreSQL).
+**users** — personas que se registran con username + password.
 ```sql
-technologies: id, name, icon, description
+users: id, username, email, name, password_hash, role, created_at
 ```
 
-**categories** — sub-areas dentro de una tecnologia.
+**questions** — preguntas del quiz, agrupadas por lenguaje.
 ```sql
-categories: id, technology_id, name, description
+questions: id, language, type, title, description, starter_code,
+           tests_template, options, correct_option, solution, solutions,
+           is_active, hash, created_at
 ```
 
-**users** — personas que se loguean con Google.
+**quizzes** — una partida: 1 usuario, 1 lenguaje, N preguntas.
 ```sql
-users: id, email, name, google_id, role, created_at
-```
-
-**questions** — preguntas del quiz.
-```sql
-questions: id, category_id, difficulty, title, description, starter_code, tests_template, is_active, hash, created_at
-```
-
-**quizzes** — una partida: 1 usuario, 1 tecnologia, N preguntas.
-```sql
-quizzes: id, user_id, technology_id, category_id, started_at, completed_at
+quizzes: id, user_id, language, started_at, completed_at, attempts_left
 ```
 
 **quiz_questions** — tabla puente: que preguntas van en que quiz y en que orden.
 ```sql
-quiz_questions: id, quiz_id, question_id, "order"
+quiz_questions: id, quiz_id, question_id, "order", attempts_count
 ```
 
 **submissions** — el codigo que el usuario envio y su resultado.
 ```sql
-submissions: id, quiz_question_id, code, sandbox_results, score, evaluated_at
+submissions: id, quiz_question_id, code, sandbox_results, score, evaluated_at, kind
 ```
 
 **session** — sesiones HTTP persistidas (usada por `connect-pg-simple`). Independiente del resto.
@@ -146,65 +137,105 @@ session: sid, sess, expire
 
 ### Decisiones clave
 
-- `users.role` (`'user'` | `'admin'`) — separa admins para el dashboard de Fases 13 y 14. Primer admin: `UPDATE users SET role='admin' WHERE email='tu@email.com';`
-- `users.google_id` — id interno de Google; evita duplicados al loguear.
-- `questions.is_active` (`boolean default true`) — soft delete usado por Fases 13 y 14.
+- `users.username` y `users.email` son únicos. `username` se usa para login; `email` para contacto.
+- `users.password_hash` almacena el hash bcrypt (10 rounds). Nunca se guarda el password en texto plano.
+- `users.role` (`'user'` | `'admin'`) — separa admins para el dashboard. Primer admin se crea via variables de entorno `ADMIN_USERNAME`/`ADMIN_PASSWORD`.
+- `questions.language` (`'javascript'` | `'sql'` | `'node'` | `'html-css-js'` | `'js-avanzado'` | `'git'`) — identifica el lenguaje de la pregunta. Sin categorías ni sub-categorías. Ver §6 para la lista completa y cómo se ejecuta cada uno.
+- `questions.type` (`'code'` | `'multiple_choice'`) — código para ejecutar o selección múltiple.
+- `questions.solution` (text, nullable) — solución/resolución en texto plano. Se usa para preguntas `multiple_choice` (explica por qué la opción correcta es la correcta) y como fallback en la pantalla de resultados.
+- `questions.solutions` (json, nullable) — array de soluciones candidatas para preguntas `code`. Cada elemento es `{ code, tests }`. El sandbox ejecuta el código del usuario contra los `tests` de **cada** solución; la pregunta se considera correcta si **alguna** de las soluciones pasa todos sus tests. Esto permite múltiples respuestas válidas (ej: orden de parámetros irrelevante, funciones equivalentes).
+- `questions.is_active` (`boolean default true`) — soft delete.
 - `questions.hash` — MD5 de title+description para deduplicar seeds.
 - `quiz_questions` como tabla puente — un quiz tiene N preguntas y una pregunta puede estar en N quizzes.
 - `quiz_questions.order` — persiste el orden; no se calcula al servir.
-- `submissions.sandbox_results` (json) — guarda stdout, stderr, status, time, memory de Judge0.
+- `quiz_questions.attempts_count` (`int default 0`) — contador de envíos del usuario para esta pregunta en este quiz. No consume vidas del quiz; es solo métrica.
+- `submissions.sandbox_results` (json) — guarda stdout, stderr, status, time, memory del sandbox WASM. Incluye un flag interno `_isCorrect` que el frontend consume para mostrar feedback (check/error animación).
+- `submissions.kind` (`varchar(20) default 'answer'`) — distingue envíos reales (`'answer'`) de saltos (`'skipped'`). Una pregunta con `kind='skipped'` cuenta como resuelta para avanzar el quiz.
+- `quizzes.attempts_left` (`int default 5`) — vidas del quiz (corazones en UI). Se decrementa solo en envíos **incorrectos** (`submitAnswer` cuando `isCorrect=false` o `skipQuestion`). Las respuestas correctas no consumen vida. Cuando llega a 0, el quiz termina y redirige a `/results`.
 
 ## 5. Flujo de Usuario
 
 ```
-1. Usuario selecciona: Technology → Sub-category → Difficulty (1-10 preguntas)
-2. Sistema busca preguntas predefinidas en BD según selección
-3. Usuario ve preguntas UNA a la vez
-4. Al enviar respuesta, código se ejecuta en Judge0 (sandbox)
-5. Al terminar, se muestra resultados: tests pasados/fallados + detalle
+1. Usuario se registra/inicia sesión (username + password)
+2. Usuario selecciona: Lenguaje + Cantidad de preguntas (1-20)
+3. Sistema busca preguntas predefinidas según el lenguaje elegido
+4. Usuario ve preguntas UNA a la vez
+5. Al enviar respuesta, código se ejecuta en sandbox WASM (QuickJS o PGlite)
+   o se compara índice de selección múltiple
+6. Al terminar, se muestra resultados: tests pasados/fallados + score total
 ```
 
-## 6. Categorías Específicas
+## 6. Lenguajes soportados
 
-### JavaScript
-- DOM
-- Asincronía (async/await, Promises)
-- Arrays
-- Variables/Scope
-- Closures
-- Prototypes
-- ES6+
-- Error Handling
+El modelo es **plano por lenguaje** (sin jerarquía de tecnologías ni niveles de dificultad). Cada `language` decide cómo se ejecuta el código en el sandbox. El campo se persiste en `questions.language` y `quizzes.language`.
 
-### Node.js
-- File System
-- HTTP/Server
+| Valor `language` | Sandbox | Categoría interna | Uso típico |
+|---|---|---|---|
+| `javascript` | QuickJS-WASM | `javascript` | Algoritmos, arrays, strings, closures, ES6+ |
+| `sql` | PGlite (in-process) | `postgresql` | DDL, DML, joins, subqueries, transacciones |
+| `node` | QuickJS-WASM | `javascript` | JWT, REST, Express, MVC, middleware, file system |
+| `js-avanzado` | QuickJS-WASM | `javascript` | Clases, async/await avanzado, prototypes |
+| `html-css-js` | Regex matcher (evaluador de markup) | `html-css-js` | Validación de HTML/CSS estático por regex |
+| `git` | (sin sandbox) | — | Selección múltiple (no hay código a ejecutar) |
+
+### Temas por lenguaje
+
+#### JavaScript
+- Arrays (sum, filter, reverse, unique)
+- Strings (capitalize, countVowels, reverse)
+- Asincronía (Promise, async/await, chainValues)
+- ES6+ (destructuring, spread)
+- Closures (makeCounter)
+
+#### Node
+- JWT (ataques, storage, validación)
+- REST API (validación, versionado, status codes)
+- Sequelize ORM
+- Renderizado (EJS, Handlebars)
+- MVC
 - Express/Middleware
-- Events
-- Streams
-- NPM/Modules
-- Environment Variables
+- File System
 
-### PostgreSQL/SQL
-- Queries básicas
-- JOINS
-- Subqueries
-- Índices
-- Normalización
-- Functions
-- Triggers
+#### SQL
+- Modelo ER
+- SQL DDL (CREATE, ALTER, RENAME)
+- SQL DML (UPDATE, DELETE con WHERE)
+- SQL Transacciones (BEGIN/COMMIT)
+- Queries básicas (SELECT, WHERE, GROUP BY, HAVING)
+- JOINS (INNER, LEFT, con COUNT)
+- Subqueries (WITH, INSERT...SELECT)
+- Agregación (GROUP BY, SUM, COUNT)
+
+#### HTML/CSS/JS
+- Estructura HTML (`hasElement`, `elementText`)
+- Estilos inline (`hasStyle`)
+- Atributos (`hasAttribute`)
+- Clases e IDs (`hasClass`, `hasId`)
+
+#### JS Avanzado
+- Clases (extends, super)
+- Async/await avanzado
+- Manejo de errores (try/catch)
+
+#### Git
+- Comandos básicos (add, commit, push)
+- Ramas (branch, merge, rebase)
+- Resolución de conflictos
 
 ## 7. Endpoints API
 
 ### Auth
-- `GET /api/auth/google` - Login con Google
+- `POST /api/auth/register` - Registro con `{ username, email, name?, password }`
+- `POST /api/auth/login` - Login con `{ username, password }`
 - `GET /api/auth/me` - Usuario actual
 - `POST /api/auth/logout` - Cerrar sesión
 
 ### Questions
-- `POST /api/quizzes/generate` - Genera quiz completo (batch)
+- `GET /api/languages` - Lista de lenguajes disponibles: `['javascript', 'sql']`
+- `POST /api/quizzes/generate` - Genera quiz completo con `{ language, count }`
 - `GET /api/quizzes/:id/current` - Pregunta actual
-- `POST /api/quizzes/:id/submit` - Enviar respuesta (async)
+- `POST /api/quizzes/:id/submit` - Enviar respuesta (síncrono, sandbox WASM o MC). Upsert: si ya hay submission previa, se reemplaza.
+- `POST /api/quizzes/:id/skip` - Saltar pregunta (solo si la pregunta ya fue respondida mal alguna vez). Consume 1 vida adicional y marca la submission como `kind='skipped'`.
 - `GET /api/quizzes/:id/results` - Resultados finales
 
 ### Profile (requiere autenticación)
@@ -221,51 +252,52 @@ Vistas (form submits):
 - `POST /admin/:id` - Actualizar pregunta (form submit)
 - `POST /admin/:id/delete` - Soft delete (form submit)
 
-API JSON (opcional para AJAX):
-- `GET /api/admin/questions` - Listar preguntas (JSON)
-- `POST /api/admin/questions` - Crear pregunta (JSON)
-- `GET /api/admin/questions/:id` - Ver una pregunta (JSON)
-- `PUT /api/admin/questions/:id` - Actualizar (JSON)
-- `DELETE /api/admin/questions/:id` - Soft delete (JSON)
-
 ## 8. Resolución de Falencias
 
 ### Sandbox Security
-- Memory limit: 256MB por ejecución
-- Timeout: 10 segundos máximo
-- Whitelist de librerías por tecnología
+- Aislamiento nativo via WebAssembly (memory-safe, sin acceso al sistema)
+- Sin polling (ejecución síncrona, en proceso)
+- Sandbox seguro por diseño (WASM)
 
 ### Error Handling
-- Si sandbox falla: timeout 10s → error graceful
-- Queue de reintentos para submissions fallidas
-- Retry con backoff exponencial (3 intentos max)
+- Si el sandbox falla: error capturado en try/catch, score 0
+- Sin cola de reintentos (ejecución síncrona)
+- Resultados siempre devueltos
 
-### Timeout de Quiz
-- 5 minutos total por quiz
-- +10 segundos por pregunta respondida
-- Usuario puede saltar/regresar entre preguntas
+### Intentos de Quiz
+- 5 intentos totales por quiz (se muestran como corazones en la UI)
+- Las respuestas correctas **no consumen** intento
+- Cada envío de respuesta **incorrecta** consume 1 intento
+- **Sin botón Saltar**: la única forma de avanzar tras un fallo es corregir la respuesta (múltiples envíos son válidos mientras queden vidas)
+- Una misma pregunta puede responderse varias veces: el backend hace upsert de la `submission` (último envío gana); `quiz_questions.attempts_count` lleva el conteo de envíos
+- Cuando los intentos llegan a 0 el quiz termina automáticamente y redirige a `/results`
+- No hay timeout por tiempo: la duración del quiz depende solo de cuántos intentos gaste el usuario
+- **Sin feedback intermedio durante el quiz**:
+  - Tras acierto: animación de check (✓ verde, `checkPop`) por ~850ms + auto-avance a la siguiente pregunta
+  - Tras fallo: animación de error (✗ rojo con shake, `errorShake`) por ~550ms + rehabilitación del botón submit para reintentar
+  - El score, los detalles de tests y la respuesta correcta solo se muestran en `/results` al finalizar
 
 ### Sistema de Puntuación
-- Score = (testsPasados / testsTotal) × 100 × dificultad
-- Tests evaluados por Judge0 (sandbox)
-- Evaluacion deterministica basada en ejecucion de tests
+- Score por pregunta = `(testsPasados / testsTotales) × 100`
+- **Máximo 100 puntos por pregunta** (sin multiplicador de dificultad)
+- Score total del quiz = suma de scores de cada pregunta
 
 ### Seguridad
-- Verificación de SQL injection
-- Code evalúa primero en sandbox, luego guarda seguro
-- Sanitización de código enviado por usuario
+- Passwords hasheados con bcrypt (10 rounds)
+- Sesiones con cookie httpOnly
+- Validación de inputs (regex username, formato email, longitud password)
+- Sanitización de respuestas (password_hash nunca se expone)
 
 ## 9. Variables de Entorno
 
-Todas las variables se cargan via dotenv desde `backend/.env` (desarrollo) o se configuran en el dashboard de Vercel (produccion). NUNCA commitear el archivo `.env` real a Git. Crear `backend/.env.example` con los mismos nombres y valores vacios.
+Todas las variables se cargan via dotenv desde `backend/.env` (desarrollo) o se configuran en el dashboard de Vercel (producción). NUNCA commitear el archivo `.env` real a Git. Crear `backend/.env.example` con los mismos nombres y valores vacios.
 
 | Variable | Requerida | Descripcion |
 |----------|-----------|-------------|
 | `DATABASE_URL` | Si | Cadena de conexion a PostgreSQL (Neon). Formato: `postgresql://user:pass@host/db?sslmode=require` |
-| `GOOGLE_CLIENT_ID` | Si | OAuth client ID de Google Cloud Console |
-| `GOOGLE_CLIENT_SECRET` | Si | OAuth client secret de Google Cloud Console |
-| `SESSION_SECRET` | Si | Cadena aleatoria larga. Generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `JUDGE0_API_URL` | Si | URL base de Judge0. Self-hosted: `http://<host>:2358`. RapidAPI: `https://judge0-ce.p.rapidapi.com` |
-| `JUDGE0_API_KEY` | Si (solo RapidAPI) | API key de Judge0. Vacio si es self-hosted |
+| `SESSION_SECRET` | Si | Cadena aleatoria larga para firmar cookies. Generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `ADMIN_USERNAME` | No | Username del admin creado automáticamente al iniciar el server |
+| `ADMIN_PASSWORD` | No | Password del admin creado automáticamente al iniciar el server |
+| `ADMIN_EMAIL` | No | Email del admin (default: `${ADMIN_USERNAME}@admin.local`) |
 | `NODE_ENV` | No | `development` o `production`. Default: `development` |
 | `PORT` | No | Puerto del servidor. Default: `3001`. En Vercel lo asigna la plataforma |

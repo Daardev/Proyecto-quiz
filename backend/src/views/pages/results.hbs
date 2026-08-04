@@ -1,0 +1,172 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      {{#if isAdmin}}<a href="/admin">⚙ Panel</a>{{/if}}
+      <form action="/api/auth/logout" method="POST" style="display:inline">
+        <button type="submit" class="secondary">Cerrar sesión</button>
+      </form>
+    {{else}}
+      <a href="/login">Iniciar sesión</a>
+      <a href="/register">Registrarse</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <h2>Resultados</h2>
+
+  <div id="loading" class="muted">Cargando resultados…</div>
+  <div id="error" class="error hidden"></div>
+
+  <div id="results" class="hidden">
+    <div class="score-large" id="total-score">0</div>
+    <p class="muted" style="text-align:center;">puntuación total</p>
+
+    <h3 style="margin-top:0.8rem;">Preguntas</h3>
+    <div id="questions-list"></div>
+
+    <div style="text-align:center; margin-top:0.8rem;">
+      <a href="/" class="btn">Nuevo quiz</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { api } from '/src/lib/api-client.js';
+
+  const params = new URLSearchParams(window.location.search);
+  const quizId = parseInt(params.get('quizId'), 10);
+
+  const loadingEl = document.getElementById('loading');
+  const errorEl = document.getElementById('error');
+  const resultsEl = document.getElementById('results');
+  const totalScoreEl = document.getElementById('total-score');
+  const questionsListEl = document.getElementById('questions-list');
+
+  function animateScore(target) {
+    let current = 0;
+    const step = Math.max(1, Math.ceil(target / 30));
+    const id = setInterval(() => {
+      current += step;
+      if (current >= target) {
+        current = target;
+        clearInterval(id);
+      }
+      totalScoreEl.textContent = current;
+    }, 30);
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderUserAnswer(q) {
+    if (!q.submission) {
+      return `
+        <div class="answer-block is-skipped">
+          <div class="answer-block__label">Tu respuesta</div>
+          <div class="answer-block__body muted">No respondida</div>
+        </div>`;
+    }
+    if (q.type === 'multiple_choice') {
+      const text = q.userAnswerText != null ? q.userAnswerText : '(sin selección)';
+      const cls = q.isCorrect ? 'is-user-passed' : 'is-user-failed';
+      return `
+        <div class="answer-block ${cls}">
+          <div class="answer-block__label">Tu respuesta</div>
+          <div class="answer-block__body">${escapeHtml(text)}</div>
+        </div>`;
+    }
+    // code
+    const cls = q.isCorrect ? 'is-user-passed' : 'is-user-failed';
+    const code = q.userAnswerText != null ? q.userAnswerText : '(sin código enviado)';
+    return `
+      <div class="answer-block ${cls}">
+        <div class="answer-block__label">Tu código</div>
+        <pre class="answer-block__code">${escapeHtml(code)}</pre>
+      </div>`;
+  }
+
+  function renderCorrectAnswer(q) {
+    if (q.type === 'multiple_choice') {
+      const text = q.correctAnswer != null ? q.correctAnswer : '(sin respuesta correcta definida)';
+      return `
+        <div class="answer-block is-correct">
+          <div class="answer-block__label">Respuesta correcta</div>
+          <div class="answer-block__body">${escapeHtml(text)}</div>
+        </div>`;
+    }
+    // code with multiple solutions
+    if (Array.isArray(q.solutions) && q.solutions.length > 0) {
+      const blocks = q.solutions.map((sol, i) => {
+        const label = sol.label || `Solución ${i + 1}`;
+        const code = sol.code || '';
+        return `
+          <div class="answer-block is-correct">
+            <details class="answer-block__details"${i === 0 ? ' open' : ''}>
+              <summary class="answer-block__label answer-block__label--clickable">${escapeHtml(label)}</summary>
+              ${code
+                ? `<pre class="answer-block__code">${escapeHtml(code)}</pre>`
+                : '<div class="answer-block__body muted">Sin código</div>'}
+            </details>
+          </div>`;
+      }).join('');
+      return `<div class="answer-block-group">${blocks}</div>`;
+    }
+    // legacy code: single solution
+    const solution = q.correctAnswer;
+    const body = solution
+      ? `<pre class="answer-block__code">${escapeHtml(solution)}</pre>`
+      : '<div class="answer-block__body muted">Sin solución disponible</div>';
+    return `
+      <div class="answer-block is-correct">
+        <details class="answer-block__details">
+          <summary class="answer-block__label answer-block__label--clickable">Respuesta correcta</summary>
+          ${body}
+        </details>
+      </div>`;
+  }
+
+  (async () => {
+    if (!quizId) {
+      loadingEl.classList.add('hidden');
+      errorEl.textContent = 'Quiz ID faltante en la URL.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+    try {
+      const data = await api.getResults(quizId);
+      loadingEl.classList.add('hidden');
+      resultsEl.classList.remove('hidden');
+      animateScore(data.totalScore || 0);
+
+      questionsListEl.innerHTML = data.questions.map((q, idx) => {
+        const sub = q.submission;
+        const status = q.status || (sub ? (q.isCorrect ? 'passed' : 'failed') : 'skipped');
+        const label = sub
+          ? `${(sub.sandbox?.testsPassed || 0)}/${(sub.sandbox?.testsTotal || 0)}`
+          : '—';
+        const heading = q.description || q.title || '';
+        return `
+          <div class="card feedback-card ${status}">
+            <h3>${idx + 1}. ${escapeHtml(heading)}</h3>
+            ${renderUserAnswer(q)}
+            ${renderCorrectAnswer(q)}
+            <p class="feedback-card__score"><strong>Score:</strong> ${sub?.score ?? 0} · <strong>Tests:</strong> ${label}</p>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      loadingEl.classList.add('hidden');
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('hidden');
+    }
+  })();
+</script>

@@ -1,0 +1,472 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      {{#if isAdmin}}<a href="/admin">⚙ Panel</a>{{/if}}
+      <form action="/api/auth/logout" method="POST" style="display:inline">
+        <button type="submit" class="secondary">Cerrar sesión</button>
+      </form>
+    {{else}}
+      <span class="guest-badge" title="Tus respuestas se evalúan pero los puntos no se guardan">👤 Modo invitado</span>
+      <a href="/login">Iniciar sesión</a>
+      <a href="/register">Registrarse</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <form id="quiz-form" class="quiz-start-card">
+    <div class="lang-carousel" id="lang-carousel">
+      <button type="button" class="carousel-nav carousel-nav--prev" id="carousel-prev" aria-label="Lenguaje anterior">‹</button>
+      <div class="lang-track" id="lang-grid">
+        {{#each counts}}
+          <button
+            type="button"
+            class="lang-card"
+            data-language="{{this.language}}"
+            data-count="{{this.count}}"
+            aria-label="Seleccionar {{this.language}}">
+            <div class="lang-card__hero">
+              <span class="lang-card__badge"></span>
+              <span class="lang-card__hero-title"></span>
+            </div>
+          <div class="lang-card__body">
+            <h4 class="lang-card__title">{{this.language}}</h4>
+            <div class="lang-card__tags"></div>
+            <p class="lang-card__total">
+              <span class="lang-card__total-label">preguntas totales:</span>
+              <span class="lang-card__total-count">{{this.count}}</span>
+            </p>
+            <p class="lang-card__author"></p>
+            <p class="lang-card__desc"></p>
+          </div>
+          </button>
+        {{/each}}
+      </div>
+      <button type="button" class="carousel-nav carousel-nav--next" id="carousel-next" aria-label="Lenguaje siguiente">›</button>
+      <div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Páginas del carrusel"></div>
+    </div>
+
+    <div class="quiz-options" id="quiz-options" hidden>
+      <label class="quiz-options__label" for="count-select">Cantidad de preguntas</label>
+      <div class="quiz-options__row">
+        <select id="count-select" class="quiz-options__select" disabled>
+          <option value="all" selected>Todas</option>
+          <option value="5" data-preset="5">5 preguntas</option>
+          <option value="10" data-preset="10">10 preguntas</option>
+          <option value="15" data-preset="15">15 preguntas</option>
+          <option value="20" data-preset="20">20 preguntas</option>
+          <option value="custom">Personalizado…</option>
+        </select>
+        <input
+          type="number"
+          id="count-custom"
+          class="quiz-options__custom"
+          min="1"
+          step="1"
+          inputmode="numeric"
+          placeholder="N"
+          hidden>
+      </div>
+    </div>
+
+    <button type="submit" id="start-btn" class="btn-start" disabled>Iniciar Quiz</button>
+    <div id="form-error" class="error hidden"></div>
+  </form>
+</div>
+
+<script type="module">
+  import { api } from '/src/lib/api-client.js';
+
+  const LANG_META = {
+    javascript: {
+      gradient: 'linear-gradient(160deg, #451a03 0%, #b45309 50%, #fbbf24 100%)',
+      heroTextColor: '#ffffff',
+      tags: ['Promise', 'async', 'await', 'fetch', 'closure', 'event loop', '?.', '??'],
+    },
+    sql: {
+      gradient: 'linear-gradient(160deg, #082f49 0%, #0369a1 50%, #38bdf8 100%)',
+      heroTextColor: '#ffffff',
+      tags: ['INSERT', 'UPDATE', 'DELETE', 'WHERE', 'JOIN', 'HAVING', 'CTE', 'TRANSACTION'],
+    },
+    git: {
+      gradient: 'linear-gradient(160deg, #450a0a 0%, #b91c1c 50%, #ff453a 100%)',
+      heroTextColor: '#ffffff',
+      tags: ['commit', 'stage', 'merge', 'rebase', 'branch', 'log'],
+    },
+    'html-css-js': {
+      gradient: 'linear-gradient(160deg, #3b0764 0%, #c2410c 35%, #fbbf24 70%, #38bdf8 100%)',
+      heroTextColor: '#ffffff',
+      tags: ['responsive', 'media query', 'rem', 'flex', 'grid', '<div>', '<button>'],
+    },
+    'js-avanzado': {
+      gradient: 'linear-gradient(160deg, #451a03 0%, #b45309 50%, #fbbf24 100%)',
+      heroTextColor: '#ffffff',
+      tags: ['class', 'extends', 'async', 'await', 'Promise', 'arrow fn', 'try/catch'],
+    },
+    node: {
+      gradient: 'linear-gradient(160deg, #022c22 0%, #047857 50%, #10ffb0 100%)',
+      heroTextColor: '#ffffff',
+      tags: ['Express', 'REST', 'JWT', 'middleware', 'MVC', 'Sequelize', 'http', 'fs'],
+    },
+  };
+
+  const FALLBACK_META = {
+    gradient: 'linear-gradient(160deg, #1f1f23 0%, #4a4a52 50%, #8b8b94 100%)',
+    heroTextColor: '#ffffff',
+    tags: ['lenguaje'],
+  };
+
+  const COLORS = {
+    javascript:    { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.45)' },
+    sql:           { color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.45)' },
+    git:           { color: '#ff453a', glow: 'rgba(255, 69, 58, 0.45)' },
+    'html-css-js': { color: '#ff8c42', glow: 'rgba(255, 140, 66, 0.45)' },
+    'js-avanzado': { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.45)' },
+    node:          { color: '#10ffb0', glow: 'rgba(16, 255, 176, 0.45)' },
+  };
+  const COLOR_FALLBACK = { color: '#00d9ff', glow: 'rgba(0, 217, 255, 0.45)' };
+
+  const grid = document.getElementById('lang-grid');
+  const startBtn = document.getElementById('start-btn');
+  const errorBox = document.getElementById('form-error');
+  const quizOptions = document.getElementById('quiz-options');
+  const countSelect = document.getElementById('count-select');
+  const countCustom = document.getElementById('count-custom');
+  const countAllOption = countSelect.querySelector('option[value="all"]');
+  const countPresetOptions = Array.from(countSelect.querySelectorAll('option[data-preset]'));
+  const DEFAULT_LABEL = 'Iniciar Quiz';
+  const DEFAULT_BASE = 'Iniciar Quiz';
+
+  let selectedLang = null;
+  let selectedCount = null;
+
+  grid.querySelectorAll('.lang-card').forEach(card => {
+    const lang = card.dataset.language;
+    const key = lang.toLowerCase();
+    const meta = LANG_META[key] || FALLBACK_META;
+    const palette = COLORS[key] || COLOR_FALLBACK;
+
+    const hero = card.querySelector('.lang-card__hero');
+    const titleEl = card.querySelector('.lang-card__hero-title');
+    const badgeEl = card.querySelector('.lang-card__badge');
+    const authorEl = card.querySelector('.lang-card__author');
+    const descEl = card.querySelector('.lang-card__desc');
+    const tagsContainer = card.querySelector('.lang-card__tags');
+
+    hero.style.setProperty('--lang-gradient', meta.gradient);
+    titleEl.textContent = lang;
+    titleEl.style.color = meta.heroTextColor;
+    if (badgeEl) badgeEl.textContent = '';
+    if (authorEl) authorEl.textContent = '';
+    if (descEl) descEl.textContent = '';
+    if (tagsContainer) {
+      tagsContainer.innerHTML = (meta.tags || [])
+        .map(t => `<span class="lang-card__tag">${escapeHtml(t)}</span>`)
+        .join('');
+    }
+
+    card.style.setProperty('--lang-color', palette.color);
+    card.style.setProperty('--lang-glow', palette.glow);
+
+    const total = parseInt(card.dataset.count, 10) || 0;
+    if (total === 0) {
+      card.classList.add('is-disabled');
+      card.setAttribute('aria-disabled', 'true');
+      card.setAttribute('disabled', 'disabled');
+    }
+  });
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function effectiveCount() {
+    const mode = countSelect.value;
+    if (mode === 'all') return selectedLang?.total ?? null;
+    if (mode === 'custom') {
+      const n = parseInt(countCustom.value, 10);
+      return Number.isFinite(n) && n > 0 ? Math.min(n, selectedLang?.total ?? n) : null;
+    }
+    const preset = parseInt(mode, 10);
+    return Number.isFinite(preset) ? preset : null;
+  }
+
+  function updateStartLabel() {
+    if (!selectedLang || selectedLang.total === 0) {
+      startBtn.textContent = DEFAULT_LABEL;
+      return;
+    }
+    const c = effectiveCount();
+    startBtn.textContent = c && c > 0 ? `${DEFAULT_BASE} (${c})` : DEFAULT_BASE;
+  }
+
+  function syncCountOptions(total) {
+    countAllOption.textContent = `Todas (${total})`;
+    countAllOption.disabled = total === 0;
+    countPresetOptions.forEach(opt => {
+      const preset = parseInt(opt.dataset.preset, 10);
+      opt.disabled = preset > total;
+      opt.hidden = preset > total;
+    });
+    if (countSelect.selectedOptions[0]?.disabled) {
+      countSelect.value = 'all';
+      countCustom.hidden = true;
+    }
+  }
+
+  function selectLanguage(card) {
+    if (!card || card.classList.contains('is-disabled')) return;
+    const total = parseInt(card.dataset.count, 10) || 0;
+    selectedLang = { language: card.dataset.language, total };
+
+    grid.querySelectorAll('.lang-card').forEach(c => c.classList.remove('is-selected'));
+    card.classList.add('is-selected');
+
+    if (total === 0) {
+      selectedCount = null;
+      quizOptions.hidden = true;
+      countSelect.disabled = true;
+      startBtn.disabled = true;
+      updateStartLabel();
+      return;
+    }
+
+    quizOptions.hidden = false;
+    countSelect.disabled = false;
+    syncCountOptions(total);
+    selectedCount = total;
+    startBtn.disabled = false;
+    updateStartLabel();
+  }
+
+  grid.addEventListener('click', (e) => {
+    const card = e.target.closest('.lang-card');
+    if (!card) return;
+    if (card.classList.contains('is-disabled')) return;
+    errorBox.classList.add('hidden');
+    selectLanguage(card);
+    pauseAutoplay();
+    centerCard(card);
+  });
+
+  countSelect.addEventListener('change', () => {
+    if (!selectedLang) return;
+    const mode = countSelect.value;
+    countCustom.hidden = mode !== 'custom';
+    if (mode === 'custom') {
+      countCustom.focus();
+    }
+    selectedCount = effectiveCount();
+    updateStartLabel();
+  });
+
+  countCustom.addEventListener('input', () => {
+    if (!selectedLang) return;
+    selectedCount = effectiveCount();
+    updateStartLabel();
+  });
+
+  document.getElementById('quiz-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.classList.add('hidden');
+    const selected = grid.querySelector('.lang-card.is-selected');
+    if (!selected || selected.classList.contains('is-disabled')) {
+      showError('Selecciona un lenguaje con preguntas disponibles');
+      return;
+    }
+    if (!selectedLang || selectedLang.total === 0) {
+      showError('Este lenguaje no tiene preguntas disponibles');
+      return;
+    }
+
+    const payload = { language: selectedLang.language };
+    const mode = countSelect.value;
+    if (mode === 'custom') {
+      const n = parseInt(countCustom.value, 10);
+      if (Number.isFinite(n) && n > 0) payload.count = n;
+    } else if (mode !== 'all') {
+      const n = parseInt(mode, 10);
+      if (Number.isFinite(n) && n > 0) payload.count = n;
+    }
+
+    startBtn.disabled = true;
+    try {
+      const result = await api.generateQuiz(payload);
+      window.location.href = `/quiz?quizId=${result.quizId}`;
+    } catch (err) {
+      showError(err.message);
+      startBtn.disabled = false;
+    }
+  });
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.classList.remove('hidden');
+  }
+
+  const carousel = document.getElementById('lang-carousel');
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  const dotsContainer = document.getElementById('carousel-dots');
+  const cards = Array.from(grid.querySelectorAll('.lang-card'));
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const AUTOPLAY_MS = 5000;
+  const RESUME_DELAY_MS = 6000;
+
+  let autoplayTimer = null;
+  let resumeTimer = null;
+  let scrollFrame = null;
+
+  const dots = cards.map((card, i) => {
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'carousel-dot';
+    dot.setAttribute('role', 'tab');
+    dot.setAttribute('aria-label', `Ir a ${card.dataset.language}`);
+    dot.setAttribute('aria-selected', 'false');
+    dot.dataset.index = String(i);
+    dotsContainer.appendChild(dot);
+    return dot;
+  });
+
+  function getGapPx() {
+    const styles = window.getComputedStyle(grid);
+    return parseFloat(styles.columnGap || styles.gap || '16') || 16;
+  }
+
+  function cardStride() {
+    const card = cards[0];
+    return card ? card.getBoundingClientRect().width + getGapPx() : 0;
+  }
+
+  function hasOverflow() {
+    return grid.scrollWidth - grid.clientWidth > 1;
+  }
+
+  function updateNavState() {
+    const overflow = hasOverflow();
+    const atStart = grid.scrollLeft <= 1;
+    const atEnd = grid.scrollLeft >= grid.scrollWidth - grid.clientWidth - 1;
+    prevBtn.disabled = !overflow || atStart;
+    nextBtn.disabled = !overflow || atEnd;
+    carousel.classList.toggle('is-no-overflow', !overflow);
+
+    const allCards = grid.querySelectorAll('.lang-card');
+    if (allCards.length > 0) {
+      allCards[0].classList.toggle('is-overflow-start', overflow && !atStart);
+      allCards[allCards.length - 1].classList.toggle('is-overflow-end', overflow && !atEnd);
+    }
+  }
+
+  function updateActiveDot() {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = null;
+      const trackCenter = grid.scrollLeft + grid.clientWidth / 2;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      cards.forEach((card, i) => {
+        const center = card.offsetLeft + card.offsetWidth / 2;
+        const dist = Math.abs(center - trackCenter);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+      });
+      dots.forEach((d, i) => {
+        const active = i === bestIdx;
+        d.classList.toggle('is-active', active);
+        d.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      updateNavState();
+    });
+  }
+
+  function scrollTo(target) {
+    const behavior = reducedMotion ? 'auto' : 'smooth';
+    grid.scrollTo({ left: target, behavior });
+  }
+
+  function centerCard(card) {
+    if (!card) return;
+    const target = card.offsetLeft - (grid.clientWidth - card.offsetWidth) / 2;
+    scrollTo(Math.max(0, target));
+  }
+
+  function tick(direction) {
+    if (!hasOverflow()) return;
+    const max = grid.scrollWidth - grid.clientWidth;
+    const stride = cardStride();
+    if (direction < 0) {
+      const next = grid.scrollLeft - stride;
+      scrollTo(next <= 0 ? 0 : next);
+      return;
+    }
+    if (grid.scrollLeft >= max - 1) {
+      scrollTo(0);
+    } else {
+      scrollTo(Math.min(max, grid.scrollLeft + stride));
+    }
+  }
+
+  function startAutoplay() {
+    stopAutoplay();
+    if (reducedMotion || !hasOverflow()) return;
+    autoplayTimer = window.setInterval(() => {
+      if (document.hidden) return;
+      tick(1);
+    }, AUTOPLAY_MS);
+  }
+
+  function stopAutoplay() {
+    if (autoplayTimer) { window.clearInterval(autoplayTimer); autoplayTimer = null; }
+  }
+
+  function pauseAutoplay() {
+    stopAutoplay();
+    if (resumeTimer) { window.clearTimeout(resumeTimer); }
+    resumeTimer = null;
+  }
+
+  function scheduleResume() {
+    if (resumeTimer) window.clearTimeout(resumeTimer);
+    resumeTimer = window.setTimeout(() => {
+      resumeTimer = null;
+      startAutoplay();
+    }, RESUME_DELAY_MS);
+  }
+
+  prevBtn.addEventListener('click', () => { pauseAutoplay(); tick(-1); scheduleResume(); });
+  nextBtn.addEventListener('click', () => { pauseAutoplay(); tick(1); scheduleResume(); });
+
+  dotsContainer.addEventListener('click', (e) => {
+    const dot = e.target.closest('.carousel-dot');
+    if (!dot) return;
+    pauseAutoplay();
+    const idx = parseInt(dot.dataset.index, 10);
+    if (!Number.isNaN(idx)) centerCard(cards[idx]);
+    scheduleResume();
+  });
+
+  grid.addEventListener('scroll', updateActiveDot, { passive: true });
+  carousel.addEventListener('pointerenter', pauseAutoplay);
+  carousel.addEventListener('pointerleave', scheduleResume);
+  carousel.addEventListener('focusin', pauseAutoplay);
+  carousel.addEventListener('focusout', scheduleResume);
+  carousel.addEventListener('touchstart', () => { pauseAutoplay(); scheduleResume(); }, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { stopAutoplay(); }
+    else { scheduleResume(); }
+  });
+
+  window.addEventListener('resize', () => {
+    updateActiveDot();
+    if (autoplayTimer) startAutoplay();
+  });
+
+  updateActiveDot();
+  startAutoplay();
+</script>

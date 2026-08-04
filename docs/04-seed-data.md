@@ -1,103 +1,108 @@
-# Fase 3: Seed Data y Preguntas Iniciales
+# Fase 4: Seed Data y Preguntas Iniciales
 
 ## Objetivo
-Poblar la base de datos con tecnologias categorias y preguntas iniciales. Esta fase te da el primer quick win - algo visible que puedas llamar con el navegador.
+Poblar la base de datos con preguntas iniciales usando el modelo simplificado (campo `language` en vez de tecnologías + categorías). Esta fase te da el primer quick win - algo visible que puedas llamar con el navegador.
 
 ---
 
-### Paso 1: Crear seed script para tecnologias
+### Paso 1: Crear seed script para preguntas
+
+#### Como realizar el codigo
+
+1. Abrir PowerShell en la raiz del proyecto
+2. Crear el archivo (si no existe):
+
+    ```powershell
+    New-Item -ItemType File -Force -Path "backend\src\seeds\questions-batch.json"
+    ```
+
+3. Abrir con tu editor
+4. Agregar preguntas siguiendo el formato del fragmento
+5. Guardar
 
 Que hacer:
-Crear src/seeds/seed.js que inserte:
-- JavaScript (icon: unicode cuadrado amarillo, description: Lenguaje de programacion)
-- Node.js (icon: unicode cuadrado verde, description: Runtime de JavaScript para backend)
-- PostgreSQL (icon: unicode cuadrado azul, description: Base de datos relacional SQL)
+Crear `src/seeds/questions-batch.json` con preguntas que tengan:
+- `language` (`'javascript'` | `'sql'` | `'node'` | `'html-css-js'` | `'js-avanzado'` | `'git'`)
+- `type` (`'code'` o `'multiple_choice'`)
+- `title`
+- `description`
+- Para tipo `code`:
+  - `starterCode` (string, código inicial que ve el usuario)
+  - `solution` (string, texto explicativo para resultados — opcional)
+  - `tests` (array de `{ input, expected }`) — formato usado actualmente
+  - `solutions` (array de `{ code, tests }`, formato preferido para múltiples soluciones validas. **Actualmente NO usado por el seed**: `wipe-and-seed.js` solo popula `testsTemplate` desde `tests`. Si una pregunta tiene `solutions`, el seed no las persiste.
+- Para tipo `multiple_choice`:
+  - `options` (array de strings)
+  - `correctOption` (índice 0-based)
+  - `solution` (string, texto explicativo para resultados)
+- (NO `difficulty`, NO `category`, NO `category_id`, NO `technology_id`)
 
 Pistas:
-- Usa db.insert(technologies).values([...]).onConflictDoNothing() para evitar duplicados si ejecutas el seed mas de una vez.
-- onConflictDoNothing() solo funciona si hay una unique constraint en la columna name. Si no la pusiste en la Fase 2 el seed fallara con duplicados en la segunda ejecucion.
-- La estructura de values() debe coincidir exactamente con el schema (mismos nombres de columnas en JS).
+- El JSON se lee desde el script `wipe-and-seed.js` y se inserta en BD
+- Cada pregunta genera un hash MD5 de `title+description` para deduplicación
+- En tiempo de ejecucion, `submissions.controller.js` (L99) prioriza `solutions` si existe: si `solutions` es array no-vacio, usa `runAgainstSolutions()`. Si no, fallback a `testsTemplate` (de `tests`). Ver `sandbox.service.js:runAgainstSolutions`.
+- `solution` (singular) es texto legible: para MC explica por que la respuesta correcta es la correcta; para codigo se muestra en la pantalla de resultados.
+- **Estado actual del seed**: `wipe-and-seed.js` solo popula `testsTemplate` desde `tests`. Las 112 preguntas actuales usan `tests`. La columna `solutions` en BD queda null.
 
 Que estudiar:
-- Drizzle insert: insercion simple vs batch insert
-- onConflictDoNothing() vs onConflictDoUpdate() - diferencias
-- Como hacer seeds idempotentes
+- Estructura de datos para preguntas de programacion
+- Como diseñar testsTemplate: input vs expected vs description
+- Multiplicidad de soluciones válidas: cuando aplica (orden de parámetros, alias de funciones, sintaxis equivalente)
 
 ---
 
-### Paso 2: Crear seed script para categorias
+### Paso 2: Crear seed script ejecutable
+
+#### Como realizar el codigo
+
+1. Abrir PowerShell en `backend/`
+2. Crear el archivo (si no existe):
+
+    ```powershell
+    New-Item -ItemType File -Force -Path "backend\src\seeds\wipe-and-seed.js"
+    ```
+
+3. Abrir con tu editor
+4. Implementar las funciones del fragmento clave
+5. Guardar
 
 Que hacer:
-Agregar al mismo seed.js la insercion de categorias por tecnologia:
-
-JavaScript (8 categorias): DOM Asincronia Arrays Variables/Scope Closures Prototypes ES6+ Error Handling
-
-Node.js (7 categorias): File System HTTP/Server Express/Middleware Events Streams NPM/Modules Environment Variables
-
-PostgreSQL (7 categorias): Queries basicas JOINS Subqueries Indices Normalizacion Functions Triggers
+Crear `src/seeds/wipe-and-seed.js` que:
+1. Borre tablas obsoletas (categories, technologies) — idempotente con `DROP TABLE IF EXISTS` (ver Fase 3 Paso 8)
+2. Borre columnas obsoletas (questions.difficulty, questions.category_id, quizzes.technology_id, quizzes.category_id) — idempotente con `DROP COLUMN IF EXISTS`
+3. Agregue `questions.solution` (TEXT) si no existe — idempotente con `ADD COLUMN IF NOT EXISTS`. Las migraciones Drizzle (Fase 03) crean la columna `questions.solutions` (JSON) — este script no la popula desde el JSON (queda null).
+4. Agregue `language` a `questions` y `quizzes` si no existen
+5. Trunque todas las tablas de quiz data (submissions, quiz_questions, quizzes, questions)
+6. Lea `questions-batch.json`
+7. Inserte cada pregunta con `hash` calculado
 
 Pistas:
-- Antes de insertar categorias necesitas obtener los IDs de las tecnologias insertadas. Usa db.query.technologies.findFirst({ where: ... }).
-- Las categorias dependen de technologyId (FK). Si el seed de tecnologias no se ejecuta primero las categorias fallaran por violacion de FK.
-- El orden importa: tecnologias luego categorias.
-- Al igual que tecnologias usa onConflictDoNothing() para que el seed sea idempotente.
+- El script maneja la migración del esquema en el mismo paso que el seed (ver Fase 3 Paso 8: DDL no-Drizzle).
+- Idempotente: se puede correr múltiples veces sin errores.
+- Las preguntas `code` con `language='sql'` se ejecutan con PGlite; las `language='node'` o `language='js-avanzado'` con QuickJS-WASM; las `language='html-css-js'` con el evaluador de markup por regex. **Las preguntas con `language='git'` no son de codigo** (son multiple_choice).
+- El campo `tests` se persiste como JSON en `testsTemplate`. La columna `solutions` (plural) del schema existe pero actualmente `wipe-and-seed.js` no la popula desde el JSON.
+- El script NO crea la columna `attempts_left` en `quizzes` ni `kind` en `submissions` ni `attempts_count` en `quiz_questions` — esas vienen de migraciones Drizzle (`0002`, `0003`) que se ejecutan antes (Fase 3 Paso 7).
 
 Que estudiar:
-- Orden de insercion con dependencias de FK
-- findFirst() con where - filtros en Drizzle
-- Como hacer que el seed sea ejecutable multiples veces sin errores
+- Drizzle: `db.insert(questions).values(...)`, `db.execute(sql\`...\`)`
+- SQL: `DROP TABLE IF EXISTS`, `ALTER TABLE ADD/DROP COLUMN IF [NOT] EXISTS`
+- Truncar en CASCADE: `TRUNCATE submissions, quiz_questions, quizzes, questions RESTART IDENTITY CASCADE` reinicia los IDs y respeta FKs
 
 ---
 
-### Paso 3: Crear seed de preguntas iniciales
+### Paso 3: Ejecutar seed completo
 
 Que hacer:
-Crear un archivo src/seeds/questions.seed.js con 5-10 preguntas de ejemplo por categoria:
-
-Para JavaScript/Arrays por ejemplo:
-1. "Suma de array" - funcion que sume todos los elementos
-2. "Filtrar pares" - funcion que devuelva solo numeros pares
-3. "Encontrar maximo" - funcion que encuentre el valor mas alto
-4. "Invertir array" - funcion que invierta el orden
-5. "Eliminar duplicados" - funcion que devuelva elementos unicos
-
-Cada pregunta debe tener:
-- title: titulo corto descriptivo
-- description: enunciado claro de que debe hacer el codigo
-- starterCode: codigo base donde el usuario empieza (con comentarios guia)
-- testsTemplate: array de 2-3 tests con input y expected
-- difficulty: 1 facil 2 medio 3 dificil
-- categoryId: ID de la categoria correspondiente
-
-Pistas:
-- El starterCode debe tener la funcion declarada pero vacia o con return placeholder. Ej: function sum(arr) { // Tu codigo aqui }
-- Los tests deben ser simples y claros. Ej: input: [1,2,3] expected: 6
-- Para obtener categoryId busca la categoria por nombre y tecnologia.
-- El hash se calcula automaticamente con title+description. No lo pongas manualmente.
-- Empieza con solo 2-3 categorias para probar. No necesitas llenar todas las 22 categorias de una.
-
-Que estudiar:
-- Diseno de preguntas de programacion: que hace una buena pregunta
-- Estructura de tests: input vs expected vs description
-- starterCode: como guiar al usuario sin dar la respuesta
-
----
-
-### Paso 4: Ejecutar seed completo
-
-Que hacer:
-1. Agregar scripts en package.json:
-   - seed: node src/seeds/seed.js (solo tecnologias y categorias)
-   - seed:questions: node src/seeds/questions.seed.js (solo preguntas)
-   - seed:all: node src/seeds/seed.js && node src/seeds/questions.seed.js (todo)
-2. Ejecutar npm run seed:all
+1. El script `seed` ya está en `package.json` apuntando a `wipe-and-seed.js`:
+   - `seed`: `node src/seeds/wipe-and-seed.js`
+2. Ejecutar `npm run seed`
 3. Verificar en BD que las tablas tienen datos
 
 Pistas:
-- El seed de preguntas DEBE ejecutarse DESPUES del seed de technologias y categorias porque necesita los IDs.
-- Si el seed falla por connection refused la BD no esta corriendo o la URL es incorrecta.
-- Si falla por relation technologies does not exist las migraciones no se aplicaron (vuelve a Fase 2).
-- Para verificar puedes conectarte a Neon Console y hacer SELECT count(*) FROM questions.
+- El script corre migraciones de esquema + inserta preguntas en una pasada
+- Si falla por connection refused la BD no está corriendo o la URL es incorrecta
+- Si falla por `relation does not exist` las migraciones de Drizzle no se aplicaron (correr `npm run db:migrate` antes)
+- Si falla por `column "solution" does not exist` la migración `ALTER TABLE` no se ejecutó (revisar Paso 2)
 
 Que estudiar:
 - Neon Console - interfaz web para ver datos
@@ -106,67 +111,66 @@ Que estudiar:
 
 ---
 
-### Paso 5: Crear ruta GET /api/technologies
+### Paso 4: Verificar archivos de soporte
 
 Que hacer:
-1. En questions.controller.js crear funcion getTechnologies que haga db.query.technologies.findMany({ with: { categories: true } }) y devuelva JSON.
-2. En questions.routes.js crear ruta router.get('/technologies', getTechnologies).
-3. En app.js importar y montar questionsRoutes en /api.
+Revisar que `backend/.env.example` solo contenga variables (`CLAVE=valor`), no código JS. Si ves algo como `import 'dotenv/config';` en alguna linea (error historico de cuando el archivo se regeneraba desde `.env`), borralo.
+
+Contenido esperado de `backend/.env.example`:
+```
+DATABASE_URL=
+SESSION_SECRET=
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+ADMIN_EMAIL=
+NODE_ENV=development
+PORT=3001
+```
 
 Pistas:
-- El with clause en Drizzle es similar a un JOIN. Sin el solo obtienes las tecnologias sin sus categorias.
-- La ruta es /api/technologies no /technologies. El prefijo /api se define en app.use('/api', questionsRoutes).
-- No necesitas autenticacion para este endpoint - es publico. Sin middleware de auth cualquier request llega al controlador.
+- Un archivo `.env` solo contiene `CLAVE=valor`, una por línea. No tiene `import`, no tiene comillas obligatorias, no tiene punto y coma.
+- `dotenv` no necesita que se importe en `.env` — se importa en el codigo JS (`server.js`, `app.js`).
 
 Que estudiar:
-- Drizzle relations: with clause eager loading vs lazy loading
-- Express Router montado con prefijo - como funciona el anidamiento
-- res.json() - formato de respuesta status codes
+- Formato de archivos `.env` (formato `dotenv`, no `ini`)
+- Por que `.env.example` se commitea pero `.env` no
 
 ---
 
-### Paso 6: Probar endpoint
+### Checklist de verificacion
 
-Que hacer:
-1. Iniciar servidor con npm run dev
-2. Abrir navegador en http://localhost:3001/api/technologies
-3. Verificar que devuelve JSON con tecnologias y sus categorias anidadas
-4. Verificar que hay preguntas en la BD con SELECT count(*) FROM questions
-
-Pistas:
-- Si ves {} vacio probablemente el seed no se ejecuto o la conexion a BD falla.
-- Si ves Cannot GET /api/technologies la ruta no esta montada correctamente en app.js.
-- Si ves HTML en vez de JSON falta express.json() middleware o la respuesta esta usando res.send() en vez de res.json().
-
-Que estudiar:
-- Debugging de rutas Express - como saber si una ruta esta registrada
-- Diferencia entre res.json() res.send() res.render()
-- Formato JSON en respuestas API
+- [ ] `questions-batch.json` con preguntas que tengan `language`, `type`, `title`, `description` y campos específicos según tipo
+- [ ] Preguntas `code` usan `tests` (unico formato actual). `solutions` es parte del schema pero no se popula desde el seed
+- [ ] Preguntas `multiple_choice` tienen `options`, `correctOption` y `solution` (texto)
+- [ ] `wipe-and-seed.js` ejecuta limpieza + migración + seed sin errores
+- [ ] `npm run seed` funciona correctamente
+- [ ] Datos visibles en Neon Console: `SELECT COUNT(*) FROM questions;`
+- [ ] Distribución por lenguaje: `SELECT language, COUNT(*) FROM questions GROUP BY language;`
+- [ ] (Alternativa local) `node src/seeds/verify-db.js` para ver desglose por language/type
+- [ ] `backend/.env.example` no contiene código JS (revisar primera línea)
+- [ ] `src/seeds/seed.js` y `src/seeds/questions.seed.js` borrados (legacy)
 
 ---
 
-## Checklist de verificacion
+## Que viene en Fase 5
 
-- [ ] Seed de tecnologias ejecutado sin errores
-- [ ] Seed de categorias ejecutado sin errores
-- [ ] Seed de preguntas ejecutado sin errores
-- [ ] Datos visibles en Neon Console
-- [ ] GET /api/technologies devuelve JSON con tecnologias y categorias
-- [ ] Hay al menos 5 preguntas por categoria de prueba en BD
-- [ ] Seed es idempotente (ejecutarlo dos veces no da error ni duplica datos)
+Las tablas `users` y `session` existen pero estan vacias. En **Fase 5 (Auth Module)** se implementa:
+- `src/services/auth.service.js` con `hashPassword`, `verifyPassword`, `bootstrapAdmin`
+- `src/controllers/auth.controller.js` con `register`, `login`, `logout`, `me`
+- `src/routes/auth.routes.js` con `/api/auth/*`
+- `src/middleware/auth.middleware.js` con `isAuthenticated`, `isAdmin`
 
----
+**Al ejecutar `npm run dev`**, `bootstrapAdmin()` se llama automaticamente desde `app.js`:
+- Si `ADMIN_USERNAME` y `ADMIN_PASSWORD` estan en `.env`, crea el usuario admin o lo promueve a `role='admin'`
+- Si no estan, no hace nada (no falla)
 
-## Errores comunes resumen
+**Bridge de inputs/outputs:**
 
-| Error | Causa probable |
-|-------|----------------|
-| relation technologies does not exist | Migraciones no aplicadas |
-| onConflictDoNothing is not a function | Version antigua de Drizzle o falta unique |
-| Seed ejecutado pero endpoint vacio | Conexion a BD distinta entre seed y app |
-| TypeError Cannot read properties | Ruta del import en app.js esta mal |
-| FK violation al insertar preguntas | CategoryId incorrecto o categoria no existe |
-| Tests fallan al ejecutar | starterCode o testsTemplate mal diseados |
+| De Fase 04 | A Fase 05 |
+|------------|-----------|
+| `users` y `session` tablas creadas | Fase 05 inserta primer admin via `bootstrapAdmin()` |
+| `ADMIN_USERNAME`/`ADMIN_PASSWORD` en `.env` | Se usan en `bootstrapAdmin()` |
+| Schema con todas las columnas de `users` | `bcrypt` + `express-session` se instalan |
 
 ---
 
@@ -174,9 +178,9 @@ Que estudiar:
 
 | Concepto | Por que es importante |
 |----------|----------------------|
-| Database seeding | Poblacion inicial de datos para desarrollo |
-| Drizzle with clause | Hace JOINs de forma declarativa |
-| Router con prefijo | Organizacion de endpoints por modulo |
-| Idempotencia | El seed debe poder ejecutarse multiples veces |
+| Seed data | Poblacion inicial de datos para desarrollo |
+| Hash MD5 | Deduplicar preguntas por contenido (title+description) |
+| Idempotencia | El script debe poder ejecutarse multiples veces sin errores |
 | Diseno de tests | Tests claros y simples para evaluar codigo |
-| starterCode | Guia al usuario sin dar la respuesta |
+| Migraciones idempotentes | DROP IF EXISTS, ADD COLUMN IF NOT EXISTS permiten correr el script varias veces |
+| Multiples soluciones validas | `solutions` (plural) permite aceptar respuestas equivalentes |

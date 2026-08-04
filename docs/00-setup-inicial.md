@@ -1,14 +1,14 @@
 # Fase 0: Setup Inicial del Proyecto
 
 ## Objetivo
-Crear la raiz del proyecto antes de programar: repo git estructura de carpetas top-level README y .gitignore raiz. Esta fase es pre-desarrollo y la hace una sola vez al inicio del proyecto.
+Crear la raíz del proyecto antes de programar: repo git, estructura de carpetas top-level, README y .gitignore raíz. Esta fase es pre-desarrollo y la hace una sola vez al inicio del proyecto.
 
 ---
 
 ### Paso 1: Crear repo Git
 
 Que hacer:
-1. Crear una carpeta llamada `Quiz` en tu maquina (donde vivira todo el proyecto)
+1. Crear una carpeta llamada `proyecto-quiz` en tu maquina (donde vivira todo el proyecto)
 2. Entrar a la carpeta y ejecutar `git init`
 3. Crear un repo vacio en GitHub o GitLab
 4. Conectar el repo local con el remoto: `git remote add origin <url-del-repo>`
@@ -26,19 +26,19 @@ Que estudiar:
 
 ---
 
-### Paso 2: Crear estructura de carpetas raiz
+### Paso 2: Crear estructura de carpetas raíz
 
 Que hacer:
-Crear manualmente esta estructura en la raiz del proyecto:
+Crear manualmente esta estructura en la raíz del proyecto:
 
 ```
-Quiz/
+proyecto-quiz/
   backend/                ← todo el codigo backend (Fases 1-11)
   frontend/               ← assets del frontend (Fases 8-9)
   docs/                   ← spec.md + todas las fases
 ```
 
-Comando rapido (PowerShell):
+Comando rápido (PowerShell):
 ```powershell
 New-Item -ItemType Directory -Force -Path @(
   "backend",
@@ -48,8 +48,8 @@ New-Item -ItemType Directory -Force -Path @(
 ```
 
 Pistas:
-- Las tres carpetas iran vacias al inicio. Las Fases 1-11 iran poblando `backend/` y `frontend/`. La spec.md y todas las fases iran en `docs/`.
-- NO crees archivos sueltos en la raiz (excepto README y .gitignore).
+- Las tres carpetas iran vacías al inicio. Las Fases 1-11 iran poblando `backend/` y `frontend/`. La spec.md y todas las fases iran en `docs/`.
+- NO crees archivos sueltos en la raíz (excepto README y .gitignore).
 - Las fases existentes asumen esta estructura. Si te salteas este paso las fases daran errores de rutas.
 
 Que estudiar:
@@ -58,10 +58,10 @@ Que estudiar:
 
 ---
 
-### Paso 3: Crear .gitignore raiz
+### Paso 3: Crear .gitignore raíz
 
 Que hacer:
-Crear archivo `.gitignore` en la raiz de `Quiz/` con este contenido:
+Crear archivo `.gitignore` en la raíz de `proyecto-quiz/` con este contenido:
 
 ```
 node_modules/
@@ -76,7 +76,7 @@ npm-debug.log*
 
 Pistas:
 - Este `.gitignore` aplica a TODO el proyecto (backend y frontend).
-- Los `.gitignore` especificos de `backend/` y `frontend/` se crean en la Fase 1 (backend) y se podrian crear en frontend si fuera necesario.
+- El `.gitignore` de la raiz cubre **todo el proyecto** (backend, frontend, docs). No se necesitan `.gitignore` adicionales en subcarpetas.
 - `node_modules/` es la exclusion MAS IMPORTANTE. Sin esto subes miles de archivos innecesarios.
 - `.env` contiene passwords y API keys. NUNCA debe subirse.
 
@@ -89,7 +89,7 @@ Que estudiar:
 ### Paso 4: Crear README.md inicial
 
 Que hacer:
-Crear archivo `README.md` en la raiz de `Quiz/`:
+Crear archivo `README.md` en la raíz de `proyecto-quiz/`:
 
 ```markdown
 # Quiz
@@ -100,8 +100,8 @@ Plataforma de quizzes de programacion con ejecucion de codigo en sandbox y evalu
 
 - Backend: Node.js + Express + PostgreSQL (Drizzle ORM + Neon)
 - Frontend: Handlebars + JavaScript ES6+ + CSS vanilla
-- Auth: Google OAuth
-- Sandbox: Judge0
+- Auth: Username + Password (bcrypt)
+- Sandbox: WebAssembly (QuickJS + PGlite)
 
 ## Estructura
 
@@ -121,7 +121,7 @@ Ver `docs/` para la spec completa y las fases de desarrollo.
 ```
 
 Pistas:
-- El README es la primera impresion del proyecto. Debe responder: que es como se instala y donde esta la documentacion.
+- El README es la primera impresión del proyecto. Debe responder: que es, como se instala y donde esta la documentación.
 - NO pongas codigo aqui todavia. Solo descripcion general.
 - A medida que el proyecto crece actualiza el README con instrucciones completas.
 
@@ -155,7 +155,7 @@ Que estudiar:
 - [ ] Repo Git creado en GitHub/GitLab
 - [ ] Repo local conectado al remoto
 - [ ] Estructura de carpetas `backend/` `frontend/` `docs/` creada
-- [ ] `.gitignore` raiz con contenido basico
+- [ ] `.gitignore` raíz con contenido básico
 - [ ] `README.md` inicial creado
 - [ ] Primer commit subido a `main`
 - [ ] En el repo remoto NO aparecen `node_modules/` ni `.env`
@@ -168,7 +168,7 @@ Que estudiar:
 |-------|----------------|
 | Permiso denegado al push | Repo remoto no existe o URL mal escrita |
 | Conflict en el primer push | El repo remoto tiene archivos (README .gitignore etc) que el local no |
-| `node_modules` aparece en git status | `.gitignore` no esta en la raiz o el patron es incorrecto |
+| `node_modules` aparece en git status | `.gitignore` no esta en la raíz o el patrón es incorrecto |
 | Rama `master` en vez de `main` | No renombraste con `git branch -M main` |
 
 ---
@@ -178,6 +178,9 @@ Que estudiar:
 | Concepto | Por que es importante |
 |----------|----------------------|
 | Repo local vs remoto | GitHub/GitLab como backup y para colaborar |
-| .gitignore raiz | Aplica a todo el proyecto no solo a una subcarpeta |
+| .gitignore raíz | Aplica a todo el proyecto no solo a una subcarpeta |
 | Conventional Commits | Mensajes estandarizados faciles de leer |
 | Estructura monorepo (sin paquetes) | Mas simple que Lerna/Nx para este tamaño de proyecto |
+
+---
+

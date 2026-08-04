@@ -1,7 +1,7 @@
 # Fase 15: Deploy Backend en Vercel
 
 ## Objetivo
-Llevar el backend Express + Node a produccion usando Vercel Functions. Base de datos en Neon con proyectos separados (dev y prod). Esta fase cubre el deploy basico. La configuracion avanzada (dominio custom Judge0 OAuth) va en la Fase 16.
+Llevar el backend Express + Node a produccion usando Vercel Functions. Base de datos en Neon con proyectos separados (dev y prod). El sandbox corre en proceso via WebAssembly (QuickJS + PGlite), sin servicios externos.
 
 ---
 
@@ -160,28 +160,50 @@ Que hacer:
 En el dashboard de Vercel ir a "Settings > Environment Variables" y agregar (solo para Production):
 
 - `DATABASE_URL` = cadena de Neon produccion
-- `GOOGLE_CLIENT_ID` = de Google Cloud Console
-- `GOOGLE_CLIENT_SECRET` = de Google Cloud Console
 - `SESSION_SECRET` = cadena aleatoria nueva (NO la misma que dev)
-- `JUDGE0_API_URL` = `http://<ip-de-judge0>:2358` (self-hosted) o vacio temporalmente
-- `JUDGE0_API_KEY` = vacio (no aplica en self-hosted)
+- `ADMIN_USERNAME` = username del admin que se crea al boot
+- `ADMIN_PASSWORD` = password del admin que se crea al boot
+- `ADMIN_EMAIL` = email del admin (opcional)
 - `NODE_ENV` = `production`
 - `PORT` = NO configurar (Vercel lo asigna automaticamente)
 
 Pistas:
 - `SESSION_SECRET` en produccion DEBE ser diferente al de desarrollo. Generar uno nuevo con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+- `ADMIN_USERNAME` y `ADMIN_PASSWORD` activan el bootstrap: al primer request despues del deploy se crea (o promueve) ese usuario con `role='admin'`.
 - Vercel NO expone el puerto al servicio. `process.env.PORT` lo asigna la plataforma.
-- `NODE_ENV=production` es importante: en Fase 6 cambia `cookie.secure` a `true` (requerido en HTTPS).
+- `NODE_ENV=production` es importante: cambia `cookie.secure` a `true` (requerido en HTTPS).
 - Puedes marcar variables como "Sensitive" para que no se muestren en logs.
 
 Que estudiar:
 - Diferencia entre variables de entorno y secrets
 - Ambientes en Vercel: Production Preview Development
 - HTTPS y `cookie.secure` en produccion
+- Bootstrap pattern: inicializacion idempotente al arranque
 
 ---
 
-### Paso 8: Deploy inicial
+### Paso 8: Consideraciones de bundle WASM
+
+Que hacer:
+Verificar que las dependencias WebAssembly no rompan el deploy:
+
+1. `quickjs-emscripten` (~3 MB): el archivo `quickjs.wasm` se importa via dynamic import
+2. `@electric-sql/pglite` (~3 MB): incluye `pglite.wasm` que se carga lazy
+
+Pistas:
+- Vercel Functions tiene limite de 250 MB unzipped. Con 6 MB de WASM estamos bien lejos del limite.
+- Cold start: primera ejecucion del sandbox tarda ~200-500 ms. Las siguientes son instantaneas.
+- Los archivos `.wasm` se sirven via el sistema de archivos de Vercel Functions. No requieren config especial en `vercel.json`.
+- Si el bundle supera limites, se puede mover WASM a Vercel Edge Config o cargar desde CDN. Pero por ahora no es necesario.
+
+Que estudiar:
+- Vercel Functions size limits
+- Dynamic imports y lazy loading en Node.js
+- WebAssembly module loading
+
+---
+
+### Paso 9: Deploy inicial
 
 Que hacer:
 1. Hacer commit de todos los cambios
@@ -202,21 +224,23 @@ Que estudiar:
 
 ---
 
-### Paso 9: Probar el deploy basico
+### Paso 10: Probar el deploy basico
 
 Que hacer:
 1. Visitar `https://Quiz.vercel.app/` → debe mostrar el index con tecnologias
 2. Visitar `https://Quiz.vercel.app/styles/main.css` → debe servir el CSS
 3. Visitar `https://Quiz.vercel.app/src/lib/api-client.js` → debe servir el JS
+4. Probar `POST /api/auth/register` y `POST /api/auth/login` end-to-end
 
 Errores comunes:
 - 500 Internal Server Error → ver logs de Vercel
 - 404 en CSS → rutas en `vercel.json` mal configuradas
 - Migraciones no corren → build command mal configurado
+- Bootstrap admin no aparece → `ADMIN_USERNAME`/`ADMIN_PASSWORD` no en env vars
 
 Pistas:
 - Si algo falla revisa primero los logs de Vercel.
-- Las pruebas de login y funcionalidad completa van en la Fase 16 (despues de configurar OAuth y Judge0).
+- Las pruebas de funcionalidad completa van en la Fase 16 (despues de configurar dominio y validar todo).
 
 Que estudiar:
 - Debugging de deploy: logs metrics traces
@@ -231,10 +255,12 @@ Que estudiar:
 - [ ] `vercel.json` en `backend/` configurado
 - [ ] `api/index.js` que exporta `app`
 - [ ] Proyecto importado en Vercel dashboard
-- [ ] Variables de entorno configuradas en Vercel (Production)
+- [ ] Variables de entorno configuradas en Vercel (Production): DATABASE_URL, SESSION_SECRET, ADMIN_USERNAME, ADMIN_PASSWORD
+- [ ] Bundle WASM desplegado correctamente (~6 MB)
 - [ ] Deploy exitoso en Vercel
 - [ ] URL `https://Quiz.vercel.app` carga el index
 - [ ] CSS y JS se sirven correctamente
+- [ ] Register y login funcionan end-to-end en produccion
 
 ---
 
@@ -247,6 +273,8 @@ Que estudiar:
 | Migraciones no corren | Build command mal configurado en Vercel |
 | Build falla | Verificar que `api/index.js` existe y exporta correctamente |
 | Variables undefined | Configurar todas en Vercel dashboard |
+| WASM no carga | Verificar que `quickjs-emscripten` y `@electric-sql/pglite` estan en `dependencies` |
+| Admin no se crea | `ADMIN_USERNAME`/`ADMIN_PASSWORD` no configurados en Vercel |
 
 ---
 
@@ -260,3 +288,5 @@ Que estudiar:
 | Neon proyectos separados | Aislamiento total dev vs prod |
 | Continuous deployment | Push a main = deploy automatico |
 | Build command con migraciones | Asegura que el schema este actualizado |
+| Bundle WASM | ~6 MB adicional, sin servicios externos, cold start ~200-500 ms |
+| Bootstrap admin via env | Crea o promueve admin automaticamente al arranque |

@@ -12,6 +12,15 @@ Que hacer:
 - Ejecutar npm init -y dentro
 - Abrir package.json y agregar type module
 
+Tambien agregar la seccion `scripts` (Fase 02 agrega el resto, pero estos dos se necesitan ya para verificar esta fase):
+
+```json
+"scripts": {
+  "dev": "nodemon server.js",
+  "start": "node server.js"
+}
+```
+
 Pistas:
 - type module le dice a Node que uses import/export en vez de require. Sin esto tendrias que usar require y todo el proyecto seria CommonJS.
 - Si ves el error require is not defined in ES module scope es porque falta type module o estas mezclando estilos.
@@ -67,7 +76,6 @@ backend/
       submissions.controller.js
       scores.controller.js
     services/
-      sandbox.service.js
     views/
       layouts/
       partials/
@@ -75,9 +83,6 @@ backend/
         index.hbs
   drizzle/
     .gitkeep
-  .env
-  .env.example
-  .gitignore
   package.json
 ```
 
@@ -95,23 +100,23 @@ New-Item -ItemType Directory -Force -Path @(
   "backend/drizzle"
 ) | Out-Null
 New-Item -ItemType File -Force -Path @(
-  "backend/.env",
-  "backend/.env.example",
-  "backend/.gitignore",
   "backend/drizzle/.gitkeep",
   "backend/src/drizzle/schema.js",
   "backend/src/views/pages/index.hbs"
 ) | Out-Null
 ```
 
+> **Nota**: los archivos `backend/.env` y `backend/.env.example` se crean en **Fase 02**. El `.gitignore` ya existe en la raiz del proyecto (Fase 00) y cubre todo el backend. Por ahora no crees ninguno de estos.
+
 Pistas:
 - Tambien puedes usar mkdir -p (bash) si prefieres. El comando de arriba es para PowerShell que es el shell de este proyecto.
 - views/layouts views/partials y views/pages son para Handlebars. En este proyecto las paginas se renderizan con Handlebars como motor de templates del backend. Las vistas iran en views/pages/. Los layouts van en views/layouts/ y los partials reutilizables (header footer) en views/partials/.
-- views/pages/index.hbs se crea vacio para que Handlebars tenga al menos una vistaPlaceholder requerido por el motor de templates. En el Paso 4 lo llenas con un <h1>Hello</h1>.
+- views/pages/index.hbs se crea vacio para que Handlebars tenga al menos una vista. Placeholder requerido por el motor de templates. En el Paso 4 lo llenas con un <h1>Hello</h1>.
 - Hay dos carpetas `drizzle/`: `src/drizzle/` contiene TU schema (codigo fuente que tu escribes) y `drizzle/` en la raiz contiene los archivos de migracion GENERADOS por drizzle-kit (no los editas a mano). Es la convencion de Drizzle.
-- El archivo `src/drizzle/schema.js` queda vacio por ahora. Lo llenas en Fase 2 Paso 3.
+- El archivo `src/drizzle/schema.js` queda vacio por ahora. Lo llenas en Fase 3 (Database Schema).
 - Los archivos .routes.js y .controller.js pueden estar vacios por ahora. Lo importante es que existan para mantener la disciplina de estructura.
 - NOTA: El spec muestra scores.routes.js y scores.controller.js como archivos separados. En las fases la logica de scores va dentro de submissions.controller.js por simplicidad. Si prefieres separar, crea esos archivos vacios tambien.
+- `services/sandbox.service.js` se crea en **Fase 9 (Sandbox)** cuando se implementa la ejecucion de codigo. Por ahora la carpeta `services/` queda vacia.
 
 Que estudiar:
 - Patron MVC aplicado a APIs: Routes Controllers Services DB
@@ -126,7 +131,14 @@ Que estudiar:
 
 Que hacer:
 Crear src/app.js con:
-1. Importar express path fileURLToPath url (los modulos nativos url y path)
+1. Importar las dependencias:
+
+    ```javascript
+    import express from 'express';
+    import { fileURLToPath } from 'node:url';
+    import path, { join } from 'node:path';
+    ```
+
 2. Crear instancia de Express
 3. Configurar Handlebars como motor de plantillas (extname hbs layoutsDir partialsDir defaultLayout)
 4. Agregar middlewares globales: express.json express.urlencoded
@@ -168,14 +180,16 @@ app.engine('hbs', engine({
   partialsDir: join(__dirname, 'views/partials'),
 }));
 app.set('view engine', 'hbs');
-app.set('views', join(__dirname, 'views/pages'));
+app.set('views', join(__dirname, 'views'));
 ```
+
+> **Nota**: con `views/` como raíz, `res.render('pages/index')` resuelve a `views/pages/index.hbs`. Mantener consistencia: todas las llamadas a `res.render()` usan el prefijo `pages/`.
 
 Pistas:
 - Para obtener __dirname en ESM necesitas: const __filename = fileURLToPath(import.meta.url); const __dirname = path.dirname(__filename). Sin esto __dirname no existe en ESM.
 - express-handlebars (no hbs) es el que soporta layoutsDir y partialsDir.
 - El orden de los middlewares importa. Primero los parsers (json urlencoded) luego cualquier static luego routes. Express ejecuta en orden.
-- Aca NO agregamos express.static porque la carpeta frontend/public NO EXISTE todavia. Si lo agregaras con path.join(__dirname ../../frontend/public) Express lanzaria un warning. Lo configuramos en la Fase 8 cuando exista el frontend.
+- Aca NO agregamos express.static porque la carpeta frontend/public NO EXISTE todavia. Si lo agregaras con path.join(__dirname ../../frontend/public) Express lanzaria un warning. Lo configuramos en la Fase 10 cuando exista el frontend.
 - La ruta GET / es solo para verificar que el servidor responde. En la Fase 10 sera reemplazada por render(handlebars) cuando construyamos las paginas reales.
 - Handlebars necesita que las vistas tengan extension .hbs. Sin la config extname .hbs Express no va a encontrar los templates.
 
@@ -185,6 +199,19 @@ Que estudiar:
 - Handlebars engine: app.engine app.set view engine app.set views
 - Diferencia entre express.json y express.urlencoded
 - Que es un layout y como funciona {{{body}}}
+
+---
+
+#### Sub-sección: (Sin helpers en esta fase)
+
+Los 4 helpers que el proyecto usa (`formatDate`, `json`, `ifEquals`, `or`) se registran en **Fase 11** cuando se necesitan para los primeros componentes interactivos. En Fase 01 con un `<h1>Hello</h1>` no se requiere ninguno.
+
+Que estudiar:
+- Handlebars helpers API: tipos (escape, simple, block)
+- `SafeString`: por que `json` necesita marcar el output como seguro
+- Block helpers vs inline helpers (diferencia en `options.fn`/`options.inverse`)
+
+> **Nota**: en Fases 5+ se agrega `bootstrapAdmin()` al inicio de `app.js` para crear el usuario admin desde variables de entorno. Por ahora no es necesario.
 
 ---
 
@@ -244,7 +271,7 @@ Que estudiar:
 - [ ] npm run dev inicia sin errores
 - [ ] http://localhost:3001/ responde con JSON
 - [ ] Estructura de carpetas completa
-- [ ] Handlebars configurado (aunque no haya templates aun)
+- [ ] Handlebars configurado y templates basicos creados
 - [ ] Entiendes que hace cada archivo que creaste
 
 ---

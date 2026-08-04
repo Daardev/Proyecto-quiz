@@ -57,7 +57,7 @@ Pistas:
 - **Por que session store externo?** En DESARROLLO la memoria funciona (un solo proceso). En VERCEL FUNCTIONS cada request va a una instancia distinta del server, perdiendo la sesion. `connect-pg-simple` guarda sesiones en la misma BD Neon.
 - `createTableIfMissing: true` permite que connect-pg-simple cree la tabla automaticamente si no existe. Aun asi la Fase 3 la define en el schema para tener control.
 - El `pool` puede ser el mismo que creaste en Fase 3 (`config/database.js`). Reutilizar evita conexiones duplicadas.
-- El orden sigue siendo: session → passport.initialize() → passport.session() → middleware res.locals.
+- El orden sigue siendo: session → middleware custom de carga de user → middleware res.locals.
 - secure: false en desarrollo porque no tienes HTTPS. En produccion debe ser true.
 
 Que estudiar:
@@ -98,7 +98,7 @@ Que estudiar:
 
 Que hacer:
 1. Iniciar el server (npm run dev)
-2. Login con Google
+2. Login con username + password (POST a `/api/auth/login`)
 3. Cerrar el navegador
 4. Abrir el navegador de nuevo (sin hacer logout)
 5. Visitar `/profile` o cualquier ruta protegida

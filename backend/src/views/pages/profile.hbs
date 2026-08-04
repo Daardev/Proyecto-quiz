@@ -1,0 +1,66 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      {{#if isAdmin}}<a href="/admin">⚙ Panel</a>{{/if}}
+      <form action="/api/auth/logout" method="POST" style="display:inline">
+        <button type="submit" class="secondary">Cerrar sesión</button>
+      </form>
+    {{else}}
+      <a href="/login">Iniciar sesión</a>
+      <a href="/register">Registrarse</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <h2>Mi perfil</h2>
+  <p class="muted">Usuario: <strong>{{user.username}}</strong> · Email: {{user.email}}</p>
+
+  <div class="row" style="margin-top:1.5rem;">
+    <div class="card">
+      <h3>{{stats.totalCompleted}}</h3>
+      <span class="muted">Completados</span>
+    </div>
+    <div class="card">
+      <h3>{{stats.totalAbandoned}}</h3>
+      <span class="muted">Abandonados</span>
+    </div>
+    <div class="card">
+      <h3>{{stats.totalScore}}</h3>
+      <span class="muted">Score total</span>
+    </div>
+    <div class="card">
+      <h3>{{stats.bestScore}}</h3>
+      <span class="muted">Mejor score</span>
+    </div>
+  </div>
+
+  <h3 style="margin-top:2rem;">Historial</h3>
+
+  {{#if quizzes.length}}
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--border);">
+          <th style="padding:0.5rem;">Lenguaje</th>
+          <th style="padding:0.5rem;">Inicio</th>
+          <th style="padding:0.5rem;">Estado</th>
+          <th style="padding:0.5rem;">Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each quizzes}}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:0.5rem;">{{this.language}}</td>
+            <td style="padding:0.5rem;">{{formatDate this.startedAt}}</td>
+            <td style="padding:0.5rem;">{{#if this.completedAt}}Completado{{else}}Abandonado{{/if}}</td>
+            <td style="padding:0.5rem;">{{this.score}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  {{else}}
+    <p class="muted">Aún no has completado ningún quiz. <a href="/">Inicia tu primer quiz</a></p>
+  {{/if}}
+</div>

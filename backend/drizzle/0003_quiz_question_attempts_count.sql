@@ -1,0 +1,1 @@
+ALTER TABLE "quiz_questions" ADD COLUMN "attempts_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint

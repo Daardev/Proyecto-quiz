@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proyecto-quiz.local/schemas/tests/js-avanzado.test.schema.json",
+  "title": "JS/Node tests file",
+  "description": "Schema for backend/src/seeds/tests/js-avanzado.json (or node.json). Keys are question ids. Each value is an array of test entries for executeJavaScript (QuickJS sandbox).",
+  "type": "object",
+  "additionalProperties": { "$ref": "#/$defs/tests" },
+  "$defs": {
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/test" }
+    },
+    "test": {
+      "type": "object",
+      "required": ["input", "expected"],
+      "properties": {
+        "input": {
+          "description": "Array of args passed to the user's function, OR a single value passed directly. JS sandbox wraps userCode, calls fn(...input), JSON.stringify the result, compares to expected.",
+          "oneOf": [
+            { "type": "array" },
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" },
+            { "type": "object" },
+            { "type": "null" }
+          ]
+        },
+        "expected": {
+          "description": "Expected JSON-serialized return value from the user's function."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

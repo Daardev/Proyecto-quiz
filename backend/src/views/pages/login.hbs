@@ -1,0 +1,32 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      {{#if isAdmin}}<a href="/admin">⚙ Panel</a>{{/if}}
+    {{else}}
+      <a href="/login">Iniciar sesión</a>
+      <a href="/register">Registrarse</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <h2>Iniciar sesión</h2>
+
+  {{#if error}}<p class="error">{{error}}</p>{{/if}}
+
+  <form action="/api/auth/login" method="POST" class="card">
+    {{#if redirect}}<input type="hidden" name="redirect" value="{{redirect}}">{{/if}}
+    <div class="form-group">
+      <label for="username">Usuario</label>
+      <input type="text" id="username" name="username" value="{{values.username}}" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Contraseña</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit">Entrar</button>
+    <p class="muted" style="margin-top:1rem;">¿No tienes cuenta? <a href="/register{{#if redirect}}?redirect={{redirect}}{{/if}}">Regístrate</a></p>
+  </form>
+</div>

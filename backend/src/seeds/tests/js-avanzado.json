@@ -1,0 +1,139 @@
+{
+  "85": [
+    {
+      "input": [
+        [
+          20,
+          25,
+          30,
+          18,
+          22,
+          28,
+          24
+        ]
+      ],
+      "expected": {
+        "promedio": 23.857,
+        "maxima": 30,
+        "minima": 18
+      }
+    },
+    {
+      "input": [
+        []
+      ],
+      "expected": {
+        "promedio": null,
+        "maxima": null,
+        "minima": null
+      }
+    },
+    {
+      "input": [
+        [
+          10
+        ]
+      ],
+      "expected": {
+        "promedio": 10,
+        "maxima": 10,
+        "minima": 10
+      }
+    },
+    {
+      "input": [
+        [
+          -5,
+          5,
+          -10,
+          20,
+          0
+        ]
+      ],
+      "expected": {
+        "promedio": 2,
+        "maxima": 20,
+        "minima": -10
+      }
+    }
+  ],
+  "86": [
+    {
+      "input": "casa",
+      "expected": [
+        "casa",
+        "casamiento",
+        "encasar"
+      ]
+    },
+    {
+      "input": "PRO",
+      "expected": [
+        "programa",
+        "proceso",
+        "pronombre"
+      ]
+    },
+    {
+      "input": "CA",
+      "expected": [
+        "casa",
+        "casamiento",
+        "encasar",
+        "perro",
+        "gato",
+        "auto",
+        "programa",
+        "proceso",
+        "pronombre",
+        "mesa"
+      ]
+    }
+  ],
+  "102": [
+    {
+      "input": [[1, 2, 3]],
+      "expected": [2, 4, 6]
+    },
+    {
+      "input": [[]],
+      "expected": []
+    },
+    {
+      "input": [[5, 10]],
+      "expected": [10, 20]
+    }
+  ],
+  "103": [
+    {
+      "input": [["hola", "javascript", "es", "genial"]],
+      "expected": ["javascript", "genial"]
+    },
+    {
+      "input": [[]],
+      "expected": []
+    },
+    {
+      "input": [["a", "ab", "abc", "abcd", "abcde"]],
+      "expected": []
+    }
+  ],
+  "104": [
+    {
+      "input": [[1, 2, 3, 4]],
+      "expected": 10
+    },
+    {
+      "input": [[]],
+      "expected": 0
+    },
+    {
+      "input": [[100]],
+      "expected": 100
+    },
+    {
+      "input": [[-5, 5]],
+      "expected": 0
+    }
+  ]
+}

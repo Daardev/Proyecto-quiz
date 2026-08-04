@@ -1,0 +1,105 @@
+{
+  "65": [
+    {
+      "input": "SELECT pr.nombre AS nombre_producto, (SUM(dp.cantidad * dp.precio_unitario))::int AS total FROM productos pr JOIN Detalle_Pedido dp ON pr.id = dp.id_producto JOIN Pedidos pe ON pe.id = dp.id_pedido WHERE EXTRACT(YEAR FROM pe.fecha) = 2024 GROUP BY pr.id, pr.nombre HAVING SUM(dp.cantidad * dp.precio_unitario) > 50000 ORDER BY total ASC",
+      "expected": [
+        {
+          "nombre_producto": "Disco SSD",
+          "total": 60000
+        },
+        {
+          "nombre_producto": "Laptop",
+          "total": 80000
+        }
+      ]
+    }
+  ],
+  "66": [
+    {
+      "input": "SELECT p.category, SUM(oi.quantity) AS total_vendido FROM products p JOIN order_items oi ON oi.product_id = p.id GROUP BY p.category ORDER BY total_vendido DESC",
+      "expected": [
+        {
+          "category": "Periféricos",
+          "total_vendido": 18
+        },
+        {
+          "category": "Pantallas",
+          "total_vendido": 2
+        }
+      ]
+    }
+  ],
+  "68": [
+    {
+      "input": "SELECT COUNT(*) AS restantes FROM Pedidos",
+      "expected": [
+        {
+          "restantes": 2
+        }
+      ]
+    }
+  ],
+  "116": [
+    {
+      "input": "SELECT * FROM productos WHERE (precio > 100 AND estado = 'activo') OR (precio < 50 AND estado = 'inactivo') ORDER BY id",
+      "expected": [
+        {
+          "id": 1,
+          "nombre": "A",
+          "estado": "activo",
+          "precio": 150
+        },
+        {
+          "id": 2,
+          "nombre": "B",
+          "estado": "inactivo",
+          "precio": 30
+        }
+      ]
+    }
+  ],
+  "117": [
+    {
+      "input": "SELECT p.name, SUM(oi.quantity) AS total FROM products p JOIN order_items oi ON oi.product_id = p.id GROUP BY p.name ORDER BY total DESC LIMIT 3",
+      "expected": [
+        {
+          "name": "Mouse",
+          "total": 25
+        },
+        {
+          "name": "Monitor",
+          "total": 20
+        },
+        {
+          "name": "Webcam",
+          "total": 8
+        }
+      ]
+    }
+  ],
+  "118": [
+    {
+      "input": "WITH totales AS (SELECT v.id_producto, SUM(v.cantidad) AS total FROM ventas v GROUP BY v.id_producto) SELECT p.nombre, t.total FROM productos p JOIN totales t ON p.id = t.id_producto WHERE t.total > 500 ORDER BY t.total DESC",
+      "expected": [
+        {
+          "nombre": "Mouse",
+          "total": 1000
+        },
+        {
+          "nombre": "Teclado",
+          "total": 600
+        }
+      ]
+    }
+  ],
+  "169": [
+    {
+      "input": "SELECT id_producto FROM destacados ORDER BY id_producto",
+      "expected": [
+        {
+          "id_producto": 3
+        }
+      ]
+    }
+  ]
+}

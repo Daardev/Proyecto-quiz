@@ -1,0 +1,310 @@
+<header>
+  <h1><a href="/" style="color: var(--accent); text-decoration: none;">Quiz</a></h1>
+  <nav>
+    {{#if user}}
+      <a href="/profile">{{user.username}}</a>
+      <a href="/admin">⚙ Panel</a>
+    {{/if}}
+  </nav>
+</header>
+
+<div class="container">
+  <h2>{{#if question}}Editar pregunta #{{question.id}}{{else}}Nueva pregunta{{/if}}</h2>
+  <p class="muted"><a href="{{returnUrl}}">← Volver al dashboard</a></p>
+
+  {{#if error}}<p class="error">{{error}}</p>{{/if}}
+
+  <form action="{{#if question}}/admin/{{question.id}}{{else}}/admin{{/if}}" method="POST" class="card">
+    <div class="form-header">
+      <div class="form-header__group">
+        <span class="form-header__label">Tipo</span>
+        <label class="radio-pill">
+          <input type="radio" name="type" value="code" {{#ifEquals values.type 'multiple_choice'}}{{else}}checked{{/ifEquals}} onchange="toggleType()">
+          <span>💻 Código</span>
+        </label>
+        <label class="radio-pill">
+          <input type="radio" name="type" value="multiple_choice" {{#ifEquals values.type 'multiple_choice'}}checked{{/ifEquals}} onchange="toggleType()">
+          <span>☑ Múltiple</span>
+        </label>
+        <span class="form-header__label form-header__label--spaced">Lenguaje</span>
+        <select id="language" name="language" required>
+          {{#each languages}}
+            <option value="{{this}}" {{#ifEquals ../values.language this}}selected{{/ifEquals}}>{{this}}</option>
+          {{/each}}
+        </select>
+        {{#if question}}
+          <button type="button" id="preview-btn" class="secondary" data-question-id="{{question.id}}" style="margin-left:auto;">🧪 Probar esta pregunta</button>
+        {{/if}}
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-col form-col--left">
+        <h3 class="form-col__title">Enunciado</h3>
+        <div class="form-group">
+          <label for="title">Título</label>
+          <input type="text" id="title" name="title" value="{{values.title}}" required>
+        </div>
+
+        <div class="form-group">
+          <label for="description">Descripción</label>
+          <textarea id="description" name="description" rows="6" required>{{values.description}}</textarea>
+        </div>
+      </div>
+
+      <div class="form-col form-col--right">
+        <h3 class="form-col__title">Respuesta</h3>
+
+        <div id="code-fields">
+<div class="form-group">
+            <label for="starterCode">Código inicial <span class="muted">(mostrado al usuario)</span></label>
+            <textarea id="starterCode" name="starterCode" rows="6" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;">{{values.starterCode}}</textarea>
+            <small class="muted">El usuario edita este código. Presiona <kbd>Enter</kbd> para insertar saltos de línea reales.</small>
+          </div>
+
+          <div class="form-group" style="background: rgba(0, 217, 255, 0.06); border-left: 3px solid var(--accent); padding: 0.8rem 1rem; border-radius: 6px;">
+            <label>Soluciones <span style="color: var(--accent); font-size: 0.85rem;">(cada una puede tener tests distintos)</span></label>
+            <p class="muted" style="margin-bottom:0.5rem; font-size:0.85rem;">
+              El usuario pasa si su código pasa los tests de <strong>cualquier</strong> solución.
+            </p>
+            <div id="solutions-list"></div>
+            <button type="button" class="secondary" onclick="addSolution()" style="margin-top:0.5rem;">+ Agregar solución</button>
+          </div>
+        </div>
+
+        <div id="choice-fields" style="display:none;">
+          <div class="form-group">
+            <label>Opciones</label>
+            <p class="muted" style="margin-bottom:0.5rem; font-size:0.85rem;">Marca el radio de la opción correcta. Usa "+ Agregar opción" para más.</p>
+            <div id="options-list"></div>
+            <button type="button" class="secondary" onclick="addOption()" style="margin-top:0.5rem;">+ Agregar opción</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-footer">
+      <button type="submit">{{#if question}}Actualizar{{else}}Crear{{/if}}</button>
+      <a href="/admin" class="btn secondary" style="margin-left:0.5rem;">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<style>
+  .form-header { padding-bottom: 0.8rem; margin-bottom: 0.8rem;}
+  .form-header__group { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .form-header__label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+  .form-header__label--spaced { margin-left: 1rem; }
+  .form-header select { max-width: 240px; padding: 0.4rem 0.6rem; font-size: 0.9rem; }
+  .radio-pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.88rem; white-space: nowrap; transition: background 0.15s, border-color 0.15s; }
+  .radio-pill:hover { background: rgba(255,255,255,0.06); }
+  .radio-pill input[type="radio"] { margin: 0; }
+  .radio-pill:has(input:checked) { background: rgba(0, 217, 255, 0.12); border-color: var(--accent); color: var(--text-primary); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+  .form-col { display: flex; flex-direction: column; gap: 0.6rem; }
+  .form-col__title { margin: 0 0 0.3rem; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); border-bottom: 1px dashed var(--border); padding-bottom: 0.4rem; }
+  .form-col .form-group { margin-top: 0; }
+  .form-footer { display: flex; align-items: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  .solution-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 0.8rem; }
+  .solution-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .solution-card__number { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
+  @media (max-width: 768px) {
+    .form-header__label--spaced { margin-left: 0; }
+    .form-header select { max-width: 100%; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<script>
+  function toggleType() {
+    const type = document.querySelector('input[name="type"]:checked').value;
+    document.getElementById('code-fields').style.display = type === 'code' ? '' : 'none';
+    document.getElementById('choice-fields').style.display = type === 'multiple_choice' ? '' : 'none';
+
+    const list = document.getElementById('options-list');
+    if (type === 'multiple_choice' && list.children.length === 0) {
+      for (let i = 0; i < 4; i++) addOption('');
+      document.querySelector('input[name="correctOption"][value="0"]').checked = true;
+      updateRemoveButtons();
+    } else if (type === 'code') {
+      list.innerHTML = '';
+    }
+  }
+
+  const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+  function escapeAttr(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function addOption(text = '') {
+    const list = document.getElementById('options-list');
+    const idx = list.children.length;
+    const row = document.createElement('div');
+    row.className = 'option-row';
+    row.innerHTML = `
+      <label class="option-radio">
+        <input type="radio" name="correctOption" value="${idx}">
+        <span class="option-letter">${LETTERS[idx] || (idx + 1)}</span>
+      </label>
+      <input type="text" name="options" value="${escapeAttr(text)}" placeholder="Texto de la opción">
+      <button type="button" class="secondary option-remove" onclick="removeOption(this)">✕</button>
+    `;
+    list.appendChild(row);
+    refreshLetters();
+    updateRemoveButtons();
+  }
+
+  function removeOption(btn) {
+    const list = document.getElementById('options-list');
+    if (list.children.length <= 2) return;
+    const wasChecked = btn.closest('.option-row').querySelector('input[type="radio"]').checked;
+    btn.closest('.option-row').remove();
+    refreshLetters();
+    if (wasChecked) {
+      list.querySelector('input[type="radio"]').checked = true;
+    }
+    updateRemoveButtons();
+  }
+
+  function refreshLetters() {
+    const list = document.getElementById('options-list');
+    Array.from(list.children).forEach((row, i) => {
+      row.querySelector('.option-letter').textContent = LETTERS[i] || (i + 1);
+      row.querySelector('input[type="radio"]').value = i;
+    });
+  }
+
+  function updateRemoveButtons() {
+    const list = document.getElementById('options-list');
+    const buttons = list.querySelectorAll('.option-remove');
+    const disabled = list.children.length <= 2;
+    buttons.forEach(b => { b.disabled = disabled; b.style.opacity = disabled ? '0.3' : '1'; });
+  }
+
+  function addSolution(code = '', tests = '') {
+    const list = document.getElementById('solutions-list');
+    const idx = list.children.length;
+    const card = document.createElement('div');
+    card.className = 'solution-card';
+    card.dataset.idx = idx;
+    card.innerHTML = `
+      <div class="solution-card__header">
+        <span class="solution-card__number">Solución ${idx + 1}</span>
+        <button type="button" class="secondary solution-remove" onclick="removeSolution(this)" style="margin-left:0.5rem;">✕ Quitar</button>
+      </div>
+      <div style="margin-bottom:0.5rem;">
+        <label style="font-size:0.85rem; color:var(--text-secondary);">Código de la solución</label>
+        <textarea name="solutions[${idx}][code]" rows="5" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;" placeholder="Código que pasa los tests">${escapeAttr(code)}</textarea>
+      </div>
+      <div>
+        <label style="font-size:0.85rem; color:var(--text-secondary);">Tests (JSON array)</label>
+        <textarea name="solutions[${idx}][tests]" rows="8" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;" placeholder='[{"input":[...],"expected":...}]'>${escapeAttr(tests)}</textarea>
+      </div>
+    `;
+    list.appendChild(card);
+    refreshSolutionIndices();
+    updateRemoveSolutionButtons();
+  }
+
+  function removeSolution(btn) {
+    const list = document.getElementById('solutions-list');
+    if (list.children.length <= 1) return;
+    btn.closest('.solution-card').remove();
+    refreshSolutionIndices();
+    updateRemoveSolutionButtons();
+  }
+
+  function updateRemoveSolutionButtons() {
+    const list = document.getElementById('solutions-list');
+    const buttons = list.querySelectorAll('.solution-remove');
+    const canRemove = list.children.length > 1;
+    buttons.forEach(b => {
+      if (canRemove) {
+        b.removeAttribute('title');
+        b.disabled = false;
+        b.style.opacity = '';
+        b.style.cursor = '';
+      } else {
+        b.setAttribute('title', 'Debe haber al menos 1 solución');
+        b.disabled = true;
+        b.style.opacity = '0.5';
+        b.style.cursor = 'not-allowed';
+      }
+    });
+  }
+
+  function refreshSolutionIndices() {
+    const list = document.getElementById('solutions-list');
+    Array.from(list.children).forEach((card, i) => {
+      card.querySelectorAll('[name^="solutions["]').forEach((input) => {
+        const name = input.getAttribute('name');
+        const newName = name.replace(/solutions\[\d+\]/, `solutions[${i}]`);
+        input.setAttribute('name', newName);
+      });
+      const numberEl = card.querySelector('.solution-card__number');
+      if (numberEl) numberEl.textContent = `Solución ${i + 1}`;
+    });
+  }
+
+  const initialOptions = {{#ifEquals values.type 'multiple_choice'}}{{json values.options}}{{else}}[]{{/ifEquals}};
+  const initialCorrect = {{#if values.correctOption}}{{values.correctOption}}{{else}}0{{/if}};
+
+  toggleType();
+
+  if ({{#ifEquals values.type 'multiple_choice'}}true{{else}}false{{/ifEquals}} && initialOptions && initialOptions.length > 0) {
+    document.getElementById('options-list').innerHTML = '';
+    initialOptions.forEach(o => addOption(o));
+    const radio = document.querySelector(`input[name="correctOption"][value="${initialCorrect}"]`);
+    if (radio) radio.checked = true;
+  }
+  updateRemoveButtons();
+
+  (function initSolutions() {
+    const initial = {{json (or values.solutions (array))}};
+    const list = document.getElementById('solutions-list');
+    list.innerHTML = '';
+    if (initial.length === 0) {
+      addSolution();
+    } else {
+      initial.forEach(s => addSolution(s.code || '', JSON.stringify(s.tests || [], null, 2)));
+    }
+    updateRemoveSolutionButtons();
+  })();
+
+  const previewBtn = document.getElementById('preview-btn');
+  if (previewBtn) {
+    previewBtn.addEventListener('click', async () => {
+      const questionId = parseInt(previewBtn.dataset.questionId, 10);
+      if (!Number.isInteger(questionId)) return;
+      previewBtn.disabled = true;
+      previewBtn.textContent = '⏳ Creando preview...';
+      try {
+        const res = await fetch('/admin/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ questionId }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          window.open(`/quiz?quizId=${data.quizId}`, '_blank');
+          previewBtn.textContent = '✓ Preview abierto';
+          setTimeout(() => {
+            previewBtn.disabled = false;
+            previewBtn.textContent = '🧪 Probar esta pregunta';
+          }, 1500);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          alert('Error: ' + (err.error || res.status));
+          previewBtn.disabled = false;
+          previewBtn.textContent = '🧪 Probar esta pregunta';
+        }
+      } catch (e) {
+        alert('Error: ' + e.message);
+        previewBtn.disabled = false;
+        previewBtn.textContent = '🧪 Probar esta pregunta';
+      }
+    });
+  }
+</script>

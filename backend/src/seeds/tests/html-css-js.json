@@ -1,0 +1,263 @@
+{
+  "80": [
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "div",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "h1",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "elementText",
+      "selector": "h1",
+      "expected": "Bienvenidos"
+    },
+    {
+      "input": "",
+      "check": "hasStyle",
+      "selector": "div",
+      "property": "display",
+      "valueContains": "flex"
+    },
+    {
+      "input": "",
+      "check": "hasStyle",
+      "selector": "div",
+      "property": "background-color",
+      "valueContains": "#87CEEB"
+    },
+    {
+      "input": "",
+      "check": "hasStyle",
+      "selector": "div",
+      "property": "color",
+      "valueContains": "white"
+    },
+    {
+      "input": "",
+      "check": "elementInside",
+      "parent": "div",
+      "child": "h1",
+      "expected": true
+    }
+  ],
+  "81": [
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "button",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "elementText",
+      "selector": "button",
+      "expected": "envíar"
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "button",
+      "attribute": "onclick",
+      "expected": "handleButton"
+    },
+    {
+      "input": "",
+      "check": "hasStyle",
+      "selector": "button",
+      "property": "border-radius",
+      "valueContains": "8px"
+    },
+    {
+      "input": "",
+      "check": "hasStyle",
+      "selector": "button",
+      "property": "cursor",
+      "valueContains": "pointer"
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "button",
+      "attribute": "title",
+      "expected": "clickear"
+    }
+  ],
+  "82": [
+    {
+      "expected": true,
+      "selector": "ul",
+      "check": "hasElement",
+      "input": ""
+    },
+    {
+      "expected": 3,
+      "selector": "li",
+      "check": "elementCount",
+      "input": ""
+    },
+    {
+      "expected": "Manzana",
+      "selector": "li",
+      "check": "elementText",
+      "input": ""
+    },
+    {
+      "expected": "Banana",
+      "selector": "li",
+      "check": "elementText",
+      "input": ""
+    },
+    {
+      "expected": "Naranja",
+      "selector": "li",
+      "check": "elementText",
+      "input": ""
+    }
+  ],
+  "83": [
+    {
+      "expected": true,
+      "selector": "input",
+      "check": "hasElement",
+      "input": ""
+    },
+    {
+      "expected": "text",
+      "attribute": "type",
+      "selector": "input",
+      "check": "hasAttribute",
+      "input": ""
+    },
+    {
+      "expected": "nombre",
+      "attribute": "id",
+      "selector": "input",
+      "check": "hasAttribute",
+      "input": ""
+    },
+    {
+      "expected": true,
+      "selector": "button",
+      "check": "hasElement",
+      "input": ""
+    },
+    {
+      "expected": "Enviar",
+      "selector": "button",
+      "check": "elementText",
+      "input": ""
+    }
+  ],
+  "84": [
+    {
+      "expected": true,
+      "selector": "h1",
+      "check": "hasElement",
+      "input": ""
+    },
+    {
+      "expected": "Hola",
+      "selector": "h1",
+      "check": "elementText",
+      "input": ""
+    },
+    {
+      "valueContains": "center",
+      "property": "text-align",
+      "selector": "h1",
+      "check": "hasStyle",
+      "input": ""
+    }
+  ],
+  "150": [
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "a",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "elementText",
+      "selector": "a",
+      "expected": "Ir a Google"
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "a",
+      "attribute": "href",
+      "expected": "google.com"
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "a",
+      "attribute": "target",
+      "expected": "_blank"
+    }
+  ],
+  "151": [
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "img",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "img",
+      "attribute": "src",
+      "expected": "foto.jpg"
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "img",
+      "attribute": "alt",
+      "expected": "Paisaje"
+    }
+  ],
+  "152": [
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "div",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "hasAttribute",
+      "selector": "div",
+      "attribute": "id",
+      "expected": "main"
+    },
+    {
+      "input": "",
+      "check": "hasElement",
+      "selector": "p",
+      "expected": true
+    },
+    {
+      "input": "",
+      "check": "elementText",
+      "selector": "p",
+      "expected": "Bienvenido"
+    },
+    {
+      "input": "",
+      "check": "hasStyle",
+      "selector": "p",
+      "property": "color",
+      "valueContains": "red"
+    }
+  ]
+}
