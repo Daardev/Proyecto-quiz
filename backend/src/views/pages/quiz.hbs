@@ -17,35 +17,52 @@
       <span class="quiz-progress" id="progress">— / —</span>
       <span class="quiz-progress" id="language-tag" style="margin-left:0.5rem;"></span>
     </div>
-    <div class="hearts" id="hearts" aria-label="Intentos restantes">
-      <span class="heart" data-idx="0">♥</span>
-      <span class="heart" data-idx="1">♥</span>
-      <span class="heart" data-idx="2">♥</span>
-      <span class="heart" data-idx="3">♥</span>
-      <span class="heart" data-idx="4">♥</span>
-    </div>
   </div>
 
-  <div class="question-card" id="question-card">
-    <div class="question-id" id="question-id">Cargando…</div>
-    <h2 class="question-title" id="question-title">Cargando…</h2>
+  <div class="quiz-layout">
+    <aside class="quiz-panel">
+      <header class="quiz-panel__header">Preguntas</header>
+      <ol id="quiz-panel-list" class="quiz-panel__list"></ol>
+    </aside>
 
-    <div id="code-area">
-      <div class="editor-container" id="code-editor"></div>
-      <div id="analyzing-overlay" class="analyzing-overlay hidden" role="status" aria-live="polite">
-        <div class="analyzing-overlay__spinner" aria-hidden="true"></div>
-        <p class="analyzing-overlay__title">Analizando tu código…</p>
-        <p class="analyzing-overlay__subtitle">Ejecutando tests en el sandbox</p>
+    <div class="quiz-content">
+      <div class="question-card" id="question-card">
+        <div class="question-id" id="question-id">Cargando…</div>
+        <h2 class="question-title" id="question-title">Cargando…</h2>
+
+        <div id="choice-area" style="display:none;">
+          <div id="options-container" class="card"></div>
+        </div>
+
+        <div id="question-grid" class="question-grid" style="display:none;">
+          <aside class="question-panel question-panel--reference">
+            <header class="panel-header">Enunciado y código inicial</header>
+            <div class="editor-container initial-code__viewer" id="initial-code-viewer"></div>
+          </aside>
+
+          <section class="question-panel question-panel--editor">
+            <div id="code-area">
+              <div class="editor-container" id="code-editor"></div>
+              <div id="analyzing-overlay" class="analyzing-overlay hidden" role="status" aria-live="polite">
+                <div class="analyzing-overlay__spinner" aria-hidden="true"></div>
+                <p class="analyzing-overlay__title">Probando tu código…</p>
+              </div>
+            </div>
+            <div class="console-output-wrap">
+              <pre id="console-output" class="console-output is-empty">RESULTADOS:
+---</pre>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="quiz-actions" id="quiz-actions" style="display:none;">
+        <button id="preview-btn" class="secondary">Probar código (0/10)</button>
+        <button id="skip-btn" class="secondary">Saltar ⤴</button>
+        <button id="next-btn" class="btn-next hidden">Siguiente →</button>
+        <button id="finish-btn" class="btn-finish hidden">Terminar Quiz</button>
       </div>
     </div>
-
-    <div id="choice-area" style="display:none;">
-      <div id="options-container" class="card"></div>
-    </div>
-  </div>
-
-  <div class="row answer-zone" id="answer-zone" style="margin-top: 1rem;">
-    <button id="submit-btn">Enviar respuesta</button>
   </div>
 </div>
 
@@ -56,78 +73,203 @@
   const params = new URLSearchParams(window.location.search);
   const quizId = parseInt(params.get('quizId'), 10);
   let firstQuestion = {{{json firstQuestion}}};
+
   if (!quizId) {
     document.querySelector('.container').innerHTML = '<p class="error">Quiz ID faltante en la URL.</p>';
   }
 
-  const questionCardEl = document.getElementById('question-card');
+  const STORAGE_KEY = `quiz_${quizId}_state`;
+  const PREVIEW_LIMIT = 10;
+
   const questionIdEl = document.getElementById('question-id');
   const titleEl = document.getElementById('question-title');
   const progressEl = document.getElementById('progress');
   const languageTagEl = document.getElementById('language-tag');
-  const codeArea = document.getElementById('code-area');
+  const questionGridEl = document.getElementById('question-grid');
   const choiceArea = document.getElementById('choice-area');
   const optionsContainer = document.getElementById('options-container');
-  const answerZone = document.getElementById('answer-zone');
-  const heartsEl = document.getElementById('hearts');
-  const heartEls = Array.from(heartsEl.querySelectorAll('.heart'));
   const analyzingOverlay = document.getElementById('analyzing-overlay');
+  const consoleOutputEl = document.getElementById('console-output');
+  const quizActionsEl = document.getElementById('quiz-actions');
+  const previewBtn = document.getElementById('preview-btn');
+  const skipBtn = document.getElementById('skip-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const finishBtn = document.getElementById('finish-btn');
+  const panelListEl = document.getElementById('quiz-panel-list');
 
-  function showAnalyzing() {
-    analyzingOverlay.classList.remove('hidden');
-  }
-  function hideAnalyzing() {
-    analyzingOverlay.classList.add('hidden');
-  }
+  function showAnalyzing() { analyzingOverlay.classList.remove('hidden'); }
+  function hideAnalyzing() { analyzingOverlay.classList.add('hidden'); }
 
   let editor = null;
-  let currentQuestion = null;
-  let submitting = false;
+  let initialCodeViewer = null;
+  let currentOrder = null;
+  let currentQuestionId = null;
+  let currentType = null;
+  let currentQuestionData = null;
   let selectedOption = null;
+  let previewing = false;
+  let previewsUsed = 0;
+  let previewsLimit = PREVIEW_LIMIT;
+  let totalQuestions = 0;
 
-  let maxAttempts = 5;
-  let attemptsLeft = null;
-
-  const CHECK_DURATION_MS = 850;
-  const ERROR_DURATION_MS = 550;
-
-  function applyAttempts(left, max) {
-    if (typeof max === 'number') maxAttempts = max;
-    if (typeof left !== 'number') return;
-    attemptsLeft = Math.max(0, Math.min(left, maxAttempts));
-    const lostCount = maxAttempts - attemptsLeft;
-    heartEls.forEach((h, i) => {
-      if (i < lostCount) {
-        h.classList.add('lost');
-        h.classList.remove('full');
-      } else {
-        h.classList.add('full');
-        h.classList.remove('lost');
-      }
-    });
-    refreshSubmitState();
+  let quizState = loadLocal();
+  if (!quizState || typeof quizState !== 'object' || quizState.quizId !== quizId) {
+    quizState = { quizId };
   }
 
-  function consumeHeart() {
-    const lostCount = maxAttempts - attemptsLeft;
-    const heart = heartEls[lostCount];
-    if (heart) {
-      heart.classList.add('lost');
-      heart.classList.remove('full');
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.quizId === quizId) return parsed;
+      return null;
+    } catch (e) { return null; }
+  }
+
+  function saveLocal() {
+    try {
+      quizState.quizId = quizId;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(quizState));
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearLocal() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function resetConsole() {
+    consoleOutputEl.classList.remove('is-error', 'is-ok');
+    consoleOutputEl.classList.add('is-empty');
+    consoleOutputEl.textContent = 'RESULTADOS:\n---';
+  }
+
+  function getEntry(order) {
+    return quizState[String(order)] || null;
+  }
+
+  function getStatus(order) {
+    const s = getEntry(order);
+    if (!s) return 'pending';
+    if (s.skipped === true) return 'skipped';
+    if (s.type === 'multiple_choice' && typeof s.option === 'number') return 'answered';
+    if (s.type === 'code' && typeof s.code === 'string' && s.code.trim() !== '') return 'answered';
+    return 'pending';
+  }
+
+  function isPending(order) {
+    return getStatus(order) === 'pending';
+  }
+
+  function countPending() {
+    let count = 0;
+    for (let i = 1; i <= totalQuestions; i++) {
+      if (isPending(i)) count++;
+    }
+    return count;
+  }
+
+  function renderPanel() {
+    panelListEl.innerHTML = '';
+    for (let i = 1; i <= totalQuestions; i++) {
+      const status = getStatus(i);
+      const entry = getEntry(i);
+      const title = entry?.title || `Pregunta ${i}`;
+      let icon = '○';
+      if (status === 'answered') icon = '●';
+      else if (status === 'skipped') icon = '⤴';
+
+      const li = document.createElement('li');
+      li.className = `quiz-panel__item is-${status}`;
+      if (i === currentOrder) li.classList.add('is-current');
+      li.dataset.order = String(i);
+      li.innerHTML = `<span class="quiz-panel__num">${i}.</span><span class="quiz-panel__title">${escapeHtml(title)}</span><span class="quiz-panel__icon">${icon}</span>`;
+      li.addEventListener('click', () => navigateToQuestion(i));
+      panelListEl.appendChild(li);
     }
   }
 
-  function refreshSubmitState() {
-    const btn = document.getElementById('submit-btn');
-    if (btn) btn.disabled = attemptsLeft !== null && attemptsLeft <= 0;
+  function updatePreviewButton() {
+    if (currentType !== 'code') {
+      previewBtn.classList.add('hidden');
+      return;
+    }
+    previewBtn.classList.remove('hidden');
+    previewBtn.textContent = `Probar código (${previewsUsed}/${previewsLimit})`;
+    previewBtn.disabled = previewsUsed >= previewsLimit;
   }
 
-  async function loadMonaco(initialCode, language) {
-    const wrapper = new CodeEditor('code-editor', {
+  function updateNavButtons() {
+    if (currentType === 'code') {
+      previewBtn.classList.remove('hidden');
+      updatePreviewButton();
+    } else {
+      previewBtn.classList.add('hidden');
+    }
+
+    const pendingCount = countPending();
+    const onLastPending = pendingCount === 1 && isPending(currentOrder);
+    const allDone = pendingCount === 0;
+    const hasNext = pendingCount > 1 || (pendingCount === 1 && !isPending(currentOrder));
+
+    if (allDone) {
+      finishBtn.classList.remove('hidden');
+      skipBtn.classList.add('hidden');
+      nextBtn.classList.add('hidden');
+    } else if (onLastPending) {
+      finishBtn.classList.remove('hidden');
+      skipBtn.classList.remove('hidden');
+      nextBtn.classList.add('hidden');
+    } else if (hasNext) {
+      nextBtn.classList.remove('hidden');
+      skipBtn.classList.remove('hidden');
+      finishBtn.classList.add('hidden');
+    } else {
+      skipBtn.classList.add('hidden');
+      nextBtn.classList.add('hidden');
+      finishBtn.classList.add('hidden');
+    }
+  }
+
+  async function loadMonacoViewer(starterCode, language) {
+    const wrapper = new CodeEditor('initial-code-viewer', {
       language: language || 'javascript',
-      value: initialCode || '// escribe tu código aquí',
+      value: starterCode || '// (sin código inicial)',
+      readOnly: true,
     });
     await wrapper.init();
+    return wrapper;
+  }
+
+  async function loadMonacoEditor(language, value) {
+    const wrapper = new CodeEditor('code-editor', {
+      language: language || 'javascript',
+      value: value || '',
+    });
+    await wrapper.init();
+    wrapper.editor.onDidChangeModelContent(() => {
+      if (currentOrder == null) return;
+      const code = wrapper.getValue();
+      const existing = getEntry(currentOrder) || {};
+      quizState[String(currentOrder)] = {
+        ...existing,
+        questionId: currentQuestionId,
+        type: 'code',
+        language: currentQuestionData?.language,
+        title: existing.title || currentQuestionData?.title,
+        code,
+        skipped: false,
+      };
+      saveLocal();
+      renderPanel();
+      updateNavButtons();
+    });
     return wrapper;
   }
 
@@ -142,194 +284,391 @@
       btn.dataset.idx = String(idx);
       btn.innerHTML = `<strong>${letters[idx]}.</strong> ${escapeHtml(opt)}`;
       btn.addEventListener('click', () => {
-        // Solo actualiza la selección; las opciones previamente incorrectas mantienen su marca roja.
-        optionsContainer.querySelectorAll('button.option-btn.is-selected').forEach(b => {
-          b.classList.remove('is-selected');
-        });
+        optionsContainer.querySelectorAll('button.option-btn.is-selected').forEach(b => b.classList.remove('is-selected'));
         btn.classList.add('is-selected');
         selectedOption = idx;
+        const existing = getEntry(currentOrder) || {};
+        quizState[String(currentOrder)] = {
+          ...existing,
+          questionId: currentQuestionId,
+          type: 'multiple_choice',
+          language: currentQuestionData?.language,
+          title: existing.title || currentQuestionData?.title,
+          option: idx,
+          skipped: false,
+        };
+        saveLocal();
+        renderPanel();
+        updateNavButtons();
       });
       optionsContainer.appendChild(btn);
     });
   }
 
-  function markSelectedOptionIncorrect() {
-    if (selectedOption === null) return;
-    const btn = optionsContainer.querySelector(`button.option-btn[data-idx="${selectedOption}"]`);
-    if (!btn) return;
-    btn.classList.remove('is-selected');
-    btn.classList.add('is-incorrect');
+  function clearConsoleContent() {
+    consoleOutputEl.classList.remove('is-error', 'is-ok', 'is-empty');
+    consoleOutputEl.innerHTML = '';
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  function renderConsole(result) {
+    clearConsoleContent();
 
-  function disableInputs() {
-    if (editor) {
-      try { editor.editor.updateOptions({ readOnly: true }); } catch (_) {}
+    if (result && result.ok === false) {
+      consoleOutputEl.classList.add('is-error');
+      consoleOutputEl.innerHTML = `<span class="console-output__error">${escapeHtml(result.error || 'Error desconocido')}</span>`;
+      return;
     }
-    optionsContainer.querySelectorAll('button').forEach(b => { b.disabled = true; });
-  }
 
-  function enableInputs() {
-    if (editor) {
-      try { editor.editor.updateOptions({ readOnly: false }); } catch (_) {}
+    consoleOutputEl.classList.add('is-ok');
+
+    if (!result) {
+      consoleOutputEl.classList.add('is-empty');
+      consoleOutputEl.textContent = '// (sin respuesta)';
+      return;
     }
-    optionsContainer.querySelectorAll('button').forEach(b => { b.disabled = false; });
-  }
 
-  function showCheckAnimation() {
-    answerZone.innerHTML = '<div class="answer-feedback is-correct" aria-label="Respuesta correcta">✓</div>';
-  }
+    const total = result.total || 0;
+    const passed = result.passed || 0;
+    const summary = total > 0
+      ? `<div class="console-output__summary ${passed === total ? 'is-pass' : 'is-fail'}">${passed}/${total} tests pasaron</div>`
+      : '';
 
-  function showErrorAnimation() {
-    answerZone.innerHTML = '<div class="answer-feedback is-error" aria-label="Respuesta incorrecta">✗</div>';
-  }
-
-  function restoreSubmitButton() {
-    answerZone.innerHTML = '<button id="submit-btn">Enviar respuesta</button>';
-    const btn = document.getElementById('submit-btn');
-    btn.addEventListener('click', submitHandler);
-    refreshSubmitState();
-  }
-
-  async function submitHandler() {
-    if (!currentQuestion || submitting || attemptsLeft === null || attemptsLeft <= 0) return;
-    submitting = true;
-    const initialBtn = document.getElementById('submit-btn');
-    if (initialBtn) initialBtn.disabled = true;
-    showAnalyzing();
-
-    let payload;
-    if (currentQuestion.type === 'multiple_choice') {
-      if (selectedOption === null) {
-        hideAnalyzing();
-        submitting = false;
-        refreshSubmitState();
-        return;
+    if (result.kind === 'sql') {
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      if (rows.length === 0) {
+        consoleOutputEl.classList.add('is-empty');
+        consoleOutputEl.textContent = result.message || '// (consulta sin resultados)';
+        if (summary) consoleOutputEl.innerHTML = summary + consoleOutputEl.innerHTML;
+      } else {
+        consoleOutputEl.innerHTML = summary + renderSqlTable(rows);
       }
-      payload = { questionId: currentQuestion.questionId, answer: selectedOption };
-    } else {
-      payload = { questionId: currentQuestion.questionId, code: editor.getValue() };
+      return;
+    }
+
+    if (result.kind === 'js') {
+      const testsBlock = (result.tests && result.tests.length > 0)
+        ? renderJsTestTable(result.tests, result.value)
+        : '';
+      if (result.value !== null && result.value !== undefined && !testsBlock.includes('console-output__table')) {
+        consoleOutputEl.innerHTML = summary + testsBlock + `<pre class="console-output__json">${escapeHtml(JSON.stringify(result.value, null, 2))}</pre>`;
+      } else if (result.value === null || result.value === undefined) {
+        consoleOutputEl.classList.add('is-empty');
+        consoleOutputEl.textContent = result.message || '// (sin valor de retorno)';
+        if (summary) consoleOutputEl.innerHTML = summary + consoleOutputEl.innerHTML;
+      } else {
+        consoleOutputEl.innerHTML = summary + testsBlock;
+      }
+      return;
+    }
+
+    if (result.kind === 'markup') {
+      if (total === 0) {
+        consoleOutputEl.classList.add('is-empty');
+        consoleOutputEl.textContent = '// (markup validado sin tests específicos)';
+      } else {
+        const detail = result.tests && result.tests.length > 0
+          ? `<table class="console-output__table">
+              <thead><tr><th>Test</th><th>Status</th><th>Detalle</th></tr></thead>
+              <tbody>${result.tests.map(t => {
+                const status = t.passed ? '✓' : '✗';
+                const cls = t.passed ? 'is-pass' : 'is-fail';
+                const label = [t.check, t.selector].filter(Boolean).join(': ') || t.check || 'test';
+                return `<tr><td>${escapeHtml(label)}</td><td class="${cls}">${status}</td><td class="console-output__msg">${escapeHtml(t.message || '')}</td></tr>`;
+              }).join('')}</tbody>
+            </table>`
+          : '';
+        consoleOutputEl.innerHTML = summary + detail;
+      }
+      return;
+    }
+
+    consoleOutputEl.textContent = JSON.stringify(result, null, 2);
+  }
+
+  function renderSqlTable(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return '';
+    const cols = Array.from(new Set(rows.flatMap(r => r && typeof r === 'object' ? Object.keys(r) : [])));
+    if (cols.length === 0) return '';
+    const thead = '<thead><tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
+    const tbody = '<tbody>' + rows.map(r => {
+      return '<tr>' + cols.map(c => {
+        const v = r?.[c];
+        if (v === null || v === undefined) return '<td class="cell-null">null</td>';
+        return '<td>' + escapeHtml(String(v)) + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody>';
+    return `<table class="console-output__table">${thead}${tbody}</table>`;
+  }
+
+  function renderJsTestTable(tests, fallbackValue) {
+    const rows = tests.map(t => {
+      const status = t.passed ? '✓' : '✗';
+      const cls = t.passed ? 'is-pass' : 'is-fail';
+      return `<tr><td>${escapeHtml(t.check || 'test')}</td><td class="${cls}">${status}</td><td class="console-output__msg">${escapeHtml(t.message || '')}</td></tr>`;
+    }).join('');
+    const valueBlock = fallbackValue !== undefined && fallbackValue !== null
+      ? `<pre class="console-output__json">${escapeHtml(JSON.stringify(fallbackValue, null, 2))}</pre>`
+      : '';
+    return `<table class="console-output__table"><thead><tr><th>Test</th><th>Status</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table>${valueBlock}`;
+  }
+
+  async function previewHandler() {
+    if (!currentQuestionData || previewing || !editor) return;
+    if (currentType !== 'code') return;
+    if (previewsUsed >= previewsLimit) return;
+
+    const code = editor.getValue();
+    if (!code.trim()) {
+      clearConsoleContent();
+      consoleOutputEl.classList.add('is-empty');
+      consoleOutputEl.textContent = 'RESULTADOS:\n---';
+      return;
+    }
+
+    previewing = true;
+    previewBtn.disabled = true;
+    showAnalyzing();
+    clearConsoleContent();
+    consoleOutputEl.classList.add('is-ok');
+    consoleOutputEl.textContent = '// Ejecutando…';
+
+    try {
+      const result = await api.previewCode(quizId, {
+        questionId: currentQuestionId,
+        code,
+      });
+      renderConsole(result);
+      if (typeof result.previewsUsed === 'number') {
+        previewsUsed = result.previewsUsed;
+        previewsLimit = result.previewsLimit || PREVIEW_LIMIT;
+      }
+    } catch (err) {
+      clearConsoleContent();
+      consoleOutputEl.classList.add('is-error');
+      consoleOutputEl.innerHTML = `<span class="console-output__error">${escapeHtml(err.message || 'Error al probar')}</span>`;
+      if (/previews_exhausted|agotados/i.test(err.message || '')) {
+        previewsUsed = previewsLimit;
+      }
+    } finally {
+      previewing = false;
+      hideAnalyzing();
+      updatePreviewButton();
+    }
+  }
+
+  function skipHandler() {
+    if (!currentQuestionData) return;
+    if (!isPending(currentOrder)) return;
+    const existing = getEntry(currentOrder) || {};
+    quizState[String(currentOrder)] = {
+      ...existing,
+      questionId: currentQuestionId,
+      type: currentType,
+      language: currentQuestionData.language,
+      title: existing.title || currentQuestionData.title,
+      code: '',
+      option: undefined,
+      skipped: true,
+    };
+    saveLocal();
+    renderPanel();
+    navigateToNextPending();
+  }
+
+  async function nextHandler() {
+    if (!currentQuestionData) return;
+    nextBtn.disabled = true;
+    skipBtn.disabled = true;
+    previewBtn.disabled = true;
+    try {
+      await navigateToNextPending();
+    } finally {
+      nextBtn.disabled = false;
+      skipBtn.disabled = false;
+      previewBtn.disabled = previewsUsed >= previewsLimit;
+    }
+  }
+
+  async function finishHandler() {
+    if (!currentQuestionData) return;
+    finishBtn.disabled = true;
+    skipBtn.disabled = true;
+    previewBtn.disabled = true;
+
+    const answers = [];
+    for (let i = 1; i <= totalQuestions; i++) {
+      const s = getEntry(i);
+      if (!s || !s.questionId) continue;
+      answers.push({
+        order: i,
+        questionId: s.questionId,
+        type: s.type,
+        code: s.code,
+        option: s.option,
+        skipped: !!s.skipped,
+      });
     }
 
     try {
-      const result = await api.submitAnswer(quizId, payload);
-      const isCorrect = result.isCorrect === true
-        || (result.testsTotal > 0 && result.testsPassed === result.testsTotal);
-
-      if (!isCorrect) {
-        consumeHeart();
-        applyAttempts(result.attemptsLeft, result.maxAttempts);
-        hideAnalyzing();
-        if (currentQuestion.type === 'multiple_choice') {
-          markSelectedOptionIncorrect();
-        }
-        showErrorAnimation();
-
-        if (attemptsLeft <= 0) {
-          setTimeout(() => { window.location.href = `/results?quizId=${quizId}`; }, ERROR_DURATION_MS);
-          return;
-        }
-
-        setTimeout(() => {
-          restoreSubmitButton();
-          enableInputs();
-          submitting = false;
-          if (editor && currentQuestion.type !== 'multiple_choice') {
-            try { editor.editor.focus(); } catch (_) {}
-          }
-        }, ERROR_DURATION_MS);
-      } else {
-        applyAttempts(result.attemptsLeft, result.maxAttempts);
-        hideAnalyzing();
-        showCheckAnimation();
-
-        if (attemptsLeft <= 0) {
-          setTimeout(() => { window.location.href = `/results?quizId=${quizId}`; }, CHECK_DURATION_MS);
-          return;
-        }
-
-        setTimeout(() => {
-          loadQuestion();
-        }, CHECK_DURATION_MS);
-      }
+      await api.finishQuiz(quizId, { answers });
+      clearLocal();
+      window.location.href = `/results?quizId=${quizId}`;
     } catch (err) {
-      hideAnalyzing();
-      restoreSubmitButton();
-      enableInputs();
-      submitting = false;
+      alert('Error al finalizar el quiz: ' + (err.message || 'desconocido'));
+      finishBtn.disabled = false;
+      skipBtn.disabled = false;
+      previewBtn.disabled = previewsUsed >= previewsLimit;
     }
   }
 
-  document.getElementById('submit-btn').addEventListener('click', submitHandler);
+  async function navigateToQuestion(order) {
+    if (currentOrder === order) return;
+    if (currentOrder != null && editor && currentType === 'code') {
+      const code = editor.getValue();
+      const existing = getEntry(currentOrder) || {};
+      quizState[String(currentOrder)] = {
+        ...existing,
+        questionId: currentQuestionId,
+        type: 'code',
+        language: currentQuestionData?.language,
+        title: existing.title || currentQuestionData?.title,
+        code,
+        skipped: false,
+      };
+      saveLocal();
+    }
 
-  async function renderQuestion(data) {
-    currentQuestion = data;
-    questionIdEl.textContent = data.questionId ? `#${data.questionId}` : '';
-    titleEl.textContent = data.description || data.title || '';
-    progressEl.textContent = `${data.order} / ${data.total}`;
-    languageTagEl.textContent = `· ${data.language}`;
+    let data;
+    try {
+      data = await api.getCurrentQuestion(quizId, order);
+    } catch (err) {
+      titleEl.textContent = err.message || 'Error al cargar la pregunta';
+      return;
+    }
 
-    applyAttempts(data.attemptsLeft, data.maxAttempts);
-
-    if (attemptsLeft === 0) {
+    if (data.done) {
       window.location.href = `/results?quizId=${quizId}`;
       return;
     }
 
+    if (editor) { editor.destroy(); editor = null; }
+    if (initialCodeViewer) { initialCodeViewer.destroy(); initialCodeViewer = null; }
+
+    currentOrder = data.order;
+    currentQuestionId = data.questionId;
+    currentType = data.type;
+    currentQuestionData = data;
+    totalQuestions = data.total || totalQuestions;
+    previewsUsed = data.previewsUsed ?? 0;
+    previewsLimit = data.previewsLimit ?? PREVIEW_LIMIT;
     selectedOption = null;
 
+    const existing = getEntry(currentOrder);
+    if (!existing) {
+      quizState[String(currentOrder)] = {
+        questionId: currentQuestionId,
+        type: currentType,
+        language: data.language,
+        title: data.title,
+        code: '',
+        option: undefined,
+        skipped: false,
+      };
+    } else {
+      quizState[String(currentOrder)] = {
+        ...existing,
+        questionId: currentQuestionId,
+        type: currentType,
+        language: data.language,
+        title: existing.title || data.title,
+      };
+    }
+    saveLocal();
+
+    questionIdEl.textContent = currentQuestionId ? `#${currentQuestionId}` : '';
+    titleEl.textContent = data.description || data.title || '';
+    progressEl.textContent = `${currentOrder} / ${totalQuestions}`;
+    languageTagEl.textContent = `· ${data.language}`;
+
+    resetConsole();
+    quizActionsEl.style.display = 'flex';
+
     if (data.type === 'multiple_choice') {
-      codeArea.style.display = 'none';
+      questionGridEl.style.display = 'none';
       choiceArea.style.display = '';
       renderOptions(data.options || []);
-      if (editor) { editor.destroy(); editor = null; }
+      const entry = getEntry(currentOrder);
+      if (entry && typeof entry.option === 'number') {
+        const btn = optionsContainer.querySelector(`button.option-btn[data-idx="${entry.option}"]`);
+        if (btn) {
+          btn.classList.add('is-selected');
+          selectedOption = entry.option;
+        }
+      }
     } else {
-      codeArea.style.display = '';
+      questionGridEl.style.display = '';
       choiceArea.style.display = 'none';
-      if (editor) editor.destroy();
-      editor = await loadMonaco(data.starterCode || '// escribe tu código aquí', data.language);
+      initialCodeViewer = await loadMonacoViewer(data.starterCode, data.language);
+      const entry = getEntry(currentOrder);
+      const savedUserCode = (entry && typeof entry.code === 'string' && entry.code !== '') ? entry.code : null;
+      const editorSeed = savedUserCode ?? (data.editorStarterCode || '');
+      editor = await loadMonacoEditor(data.language, editorSeed);
     }
 
+    renderPanel();
+    updateNavButtons();
     hideAnalyzing();
   }
 
-  async function loadQuestion() {
-    submitting = false;
-    restoreSubmitButton();
-
-    if (firstQuestion && !firstQuestion.__error) {
-      const data = firstQuestion;
-      firstQuestion = null;
-      if (data.done) {
-        window.location.href = `/results?quizId=${quizId}`;
+  async function navigateToNextPending() {
+    for (let i = 1; i <= totalQuestions; i++) {
+      if (i === currentOrder) continue;
+      if (isPending(i)) {
+        await navigateToQuestion(i);
         return;
       }
-      try {
-        await renderQuestion(data);
-      } catch (err) {
-        titleEl.textContent = err.message;
-      }
-      return;
     }
-
-    try {
-      const data = await api.getCurrentQuestion(quizId);
-      if (data.done) {
-        window.location.href = `/results?quizId=${quizId}`;
-        return;
-      }
-      await renderQuestion(data);
-    } catch (err) {
-      titleEl.textContent = err.message;
-    }
+    await finishHandler();
   }
 
+  async function loadInitial() {
+    let data = firstQuestion;
+    if (!data || data.__error) {
+      try {
+        data = await api.getCurrentQuestion(quizId);
+      } catch (err) {
+        titleEl.textContent = err.message;
+        return;
+      }
+    }
+    firstQuestion = null;
+    if (data.done) {
+      window.location.href = `/results?quizId=${quizId}`;
+      return;
+    }
+    totalQuestions = data.total || 0;
+    if (!quizState[String(data.order)]) {
+      quizState[String(data.order)] = {
+        questionId: data.questionId,
+        type: data.type,
+        language: data.language,
+        title: data.title,
+        code: '',
+        option: undefined,
+        skipped: false,
+      };
+      saveLocal();
+    }
+    renderPanel();
+    await navigateToQuestion(data.order);
+  }
+
+  skipBtn.addEventListener('click', skipHandler);
+  nextBtn.addEventListener('click', nextHandler);
+  previewBtn.addEventListener('click', previewHandler);
+  finishBtn.addEventListener('click', finishHandler);
+
   (async () => {
-    await loadQuestion();
+    await loadInitial();
   })();
 </script>

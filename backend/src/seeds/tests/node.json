@@ -1,0 +1,50 @@
+{
+  "161": [
+    {
+      "input": [
+        [
+          "casa",
+          "perro",
+          "gato",
+          "elefante"
+        ]
+      ],
+      "expected": "elefante"
+    },
+    {
+      "input": [
+        [
+          "a",
+          "bb",
+          "ccc",
+          "dd",
+          "e"
+        ]
+      ],
+      "expected": "ccc"
+    },
+    {
+      "input": [
+        [
+          "hola",
+          "mundo"
+        ]
+      ],
+      "expected": "hola"
+    },
+    {
+      "input": [
+        []
+      ],
+      "expected": ""
+    },
+    {
+      "input": [
+        [
+          "solo"
+        ]
+      ],
+      "expected": "solo"
+    }
+  ]
+}

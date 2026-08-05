@@ -29,6 +29,16 @@
       ]
     }
   ],
+  "67": [
+    {
+      "input": "SELECT id_producto FROM destacados ORDER BY id_producto",
+      "expected": [
+        {
+          "id_producto": 3
+        }
+      ]
+    }
+  ],
   "68": [
     {
       "input": "SELECT COUNT(*) AS restantes FROM Pedidos",
@@ -88,16 +98,6 @@
         {
           "nombre": "Teclado",
           "total": 600
-        }
-      ]
-    }
-  ],
-  "169": [
-    {
-      "input": "SELECT id_producto FROM destacados ORDER BY id_producto",
-      "expected": [
-        {
-          "id_producto": 3
         }
       ]
     }

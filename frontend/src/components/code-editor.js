@@ -93,6 +93,7 @@ export class CodeEditor {
       theme: options.theme || 'vs-dark',
       value: options.value || '',
       fontSize: options.fontSize || 14,
+      readOnly: options.readOnly === true,
       ...options,
     };
     this.editor = null;
@@ -101,6 +102,7 @@ export class CodeEditor {
   async init() {
     const monaco = await loadMonacoLoader();
     const monacoLang = resolveMonacoLanguage(this.options.language);
+    const readOnly = this.options.readOnly === true;
     this.editor = monaco.editor.create(this.container, {
       value: this.options.value,
       language: monacoLang,
@@ -110,6 +112,12 @@ export class CodeEditor {
       fontSize: this.options.fontSize,
       lineHeight: 20,
       wordWrap: 'on',
+      domReadOnly: readOnly,
+      readOnly,
+      contextmenu: readOnly,
+      renderLineHighlight: readOnly ? 'none' : 'line',
+      cursorBlinking: readOnly ? 'solid' : 'blink',
+      cursorStyle: readOnly ? 'underline' : 'line',
     });
     return this.editor;
   }

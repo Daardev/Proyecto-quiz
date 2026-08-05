@@ -22,13 +22,6 @@
       "input": "",
       "check": "hasStyle",
       "selector": "div",
-      "property": "display",
-      "valueContains": "flex"
-    },
-    {
-      "input": "",
-      "check": "hasStyle",
-      "selector": "div",
       "property": "background-color",
       "valueContains": "#87CEEB"
     },
@@ -38,55 +31,6 @@
       "selector": "div",
       "property": "color",
       "valueContains": "white"
-    },
-    {
-      "input": "",
-      "check": "elementInside",
-      "parent": "div",
-      "child": "h1",
-      "expected": true
-    }
-  ],
-  "81": [
-    {
-      "input": "",
-      "check": "hasElement",
-      "selector": "button",
-      "expected": true
-    },
-    {
-      "input": "",
-      "check": "elementText",
-      "selector": "button",
-      "expected": "envíar"
-    },
-    {
-      "input": "",
-      "check": "hasAttribute",
-      "selector": "button",
-      "attribute": "onclick",
-      "expected": "handleButton"
-    },
-    {
-      "input": "",
-      "check": "hasStyle",
-      "selector": "button",
-      "property": "border-radius",
-      "valueContains": "8px"
-    },
-    {
-      "input": "",
-      "check": "hasStyle",
-      "selector": "button",
-      "property": "cursor",
-      "valueContains": "pointer"
-    },
-    {
-      "input": "",
-      "check": "hasAttribute",
-      "selector": "button",
-      "attribute": "title",
-      "expected": "clickear"
     }
   ],
   "82": [

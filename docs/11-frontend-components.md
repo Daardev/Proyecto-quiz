@@ -207,4 +207,60 @@ Bloque try/catch alrededor de todas las llamadas a API. Mensajes amigables para:
 | Timer/interval | Gestion de tiempo en el navegador |
 | Maquina de estados del quiz | Flujo ordenado: carga → responde → feedback → siguiente |
 | Type detection (code vs MC) | UI dinamica segun `type` de la pregunta |
+
+---
+
+## Layout de preguntas de código (dos paneles)
+
+A partir de esta fase, las preguntas de código (`type === 'code'`) usan un layout de **dos paneles lado a lado** en lugar de un único editor con el `starterCode` precargado.
+
+### Estructura visual
+
+```
+┌─────────────────────────────┬─────────────────────────────┐
+│ Enunciado y código inicial  │ Tu código                   │
+│ (read-only)                 │ (editable)                  │
+│                             │                             │
+│ #65                         │ // Escribe tu código aquí   │
+│ "Escribe una consulta SQL…" │                             │
+│                             │ SELECT …                    │
+│ -- sólo visible para el user │                             │
+│ CREATE TABLE productos(...) │                             │
+│                             │ [Probar código] [Enviar]    │
+│                             │ // (consola de preview)     │
+└─────────────────────────────┴─────────────────────────────┘
+```
+
+### Por qué dos paneles
+
+- **Izquierda**: el usuario VE el `starterCode` (comentarios del schema, statements de configuración, hints) sin poder modificarlo. Es una guía visual de qué tiene disponible (tablas, helpers, etc.).
+- **Derecha**: el usuario ESCRIBE su respuesta desde cero. El editor está vacío con placeholder `// Escribe tu código aquí`.
+
+### `setupCode` vs `starterCode`
+
+Se separan dos campos que antes vivían mezclados en `starterCode`:
+
+- `setupCode`: se ejecuta en el sandbox **antes** del código del usuario. NO se muestra en la UI. Útil para SQL (`CREATE TABLE` / `INSERT INTO`) o JS (helpers como `getWords()`).
+- `starterCode`: lo que se ve en el panel read-only. NO se ejecuta. Sirve como referencia/hint.
+
+### Botones de la zona de respuestas
+
+- **Probar código** (secundario, solo visible en code): ejecuta el código en el sandbox y muestra la salida cruda en una **consola** debajo del editor. No afecta `attemptsLeft`. Endpoint: `POST /api/quizzes/:quizId/preview`.
+- **Enviar respuesta** (danger): corre los tests reales, marca ✓/✗, consume corazón si falla. Endpoint: `POST /api/quizzes/:quizId/submit`.
+
+### Salida de la consola
+
+- `kind === 'sql'`: renderiza tabla con headers (columnas inferidas de `Object.keys(rows[0])`) y filas. Si 0 filas → `// (consulta sin resultados)`.
+- `kind === 'js'`: JSON pretty-printed del valor retornado por la función principal.
+- `kind === 'markup'`: solo validación de regex.
+- `ok === false`: texto en rojo con el error.
+
+### Soporte multi-lenguaje
+
+El layout aplica por **`type === 'code'`**, no por lenguaje. Soporta:
+- `sql` (PGlite)
+- `js-avanzado`, `javascript`, `node` (QuickJS)
+- `html-css-js` (regex markup)
+
+Una pregunta Node nueva hereda toda la estructura automáticamente.
 | Error handling en frontend | UX profesional no alert() |

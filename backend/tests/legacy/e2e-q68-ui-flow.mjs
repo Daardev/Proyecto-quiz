@@ -36,23 +36,15 @@ async function run() {
     const title = await page.locator('#question-title').textContent();
     log(`Pregunta cargada: "${title.substring(0, 50)}..."`, title.length > 0);
 
-    const fullUserCode = await page.evaluate(async () => {
-      const ta = document.querySelector('textarea.inputarea');
-      return ta?.value || '';
+    const viewerCount = await page.evaluate(() => window.monaco?.editor?.getEditors?.()?.length || 0);
+    log(`Monaco editors instanciados (viewer read-only + editor editable): ${viewerCount}`, viewerCount >= 2);
+
+    await page.evaluate(() => {
+      const editors = window.monaco?.editor?.getEditors?.() || [];
+      const editor = editors[editors.length - 1];
+      if (editor) editor.setValue('DELETE FROM Pedidos WHERE EXTRACT(YEAR FROM fecha) < 2023;');
     });
-    log(`Editor initial value (length=${fullUserCode.length})`, fullUserCode.length > 0);
-    if (fullUserCode.length === 0) {
-      await ta.fill('DELETE FROM Pedidos WHERE EXTRACT(YEAR FROM fecha) < 2023;');
-      log('Tu respuesta escrita en el editor', true);
-    } else {
-      console.log('  Editor ya contiene starter code; agregando tu query al final');
-      await page.evaluate((starter) => {
-        const ta = document.querySelector('textarea.inputarea');
-        const editor = window.monaco?.editor?.getEditors?.()?.[0];
-        if (editor) editor.setValue(starter + '\nDELETE FROM Pedidos WHERE EXTRACT(YEAR FROM fecha) < 2023;');
-        else if (ta) ta.value = starter + '\nDELETE FROM Pedidos WHERE EXTRACT(YEAR FROM fecha) < 2023;';
-      }, fullUserCode);
-    }
+    log('Tu respuesta escrita en el editor', true);
 
     await page.click('#submit-btn');
     console.log('  Submit clickeado, esperando respuesta...');

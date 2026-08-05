@@ -10,7 +10,7 @@ let cache = null;
 function loadTestsFiles() {
   if (cache) return cache;
   cache = {};
-  for (const lang of ['sql', 'js-avanzado', 'html-css-js']) {
+  for (const lang of ['sql', 'js-avanzado', 'node', 'html-css-js']) {
     const file = path.join(TESTS_DIR, `${lang}.json`);
     try {
       const data = JSON.parse(readFileSync(file, 'utf-8'));

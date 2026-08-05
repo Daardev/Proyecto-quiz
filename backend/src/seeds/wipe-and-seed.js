@@ -1,104 +1,159 @@
 import 'dotenv/config';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import crypto from 'node:crypto';
-import { sql } from 'drizzle-orm';
-import { db } from '../config/database.js';
+import { eq, and, isNull, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { db, pool } from '../config/database.js';
 import { questions } from '../drizzle/schema.js';
-import { getTestsForQuestion, reloadTestsCache } from '../services/tests-loader.service.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { regenerateAllTestsFiles, getTestEntry } from '../services/question-export.js';
+import { runBackup } from './seed-helpers.js';
 
 function md5(str) {
-  return crypto.createHash('md5').update(str).digest('hex');
+  return createHash('md5').update(str).digest('hex');
 }
 
-async function migrate() {
-  console.log('[migrate] Borrando tablas obsoletas (categories, technologies)...');
+function buildSolutions(q, testsFromFile) {
+  if (!testsFromFile) return null;
+  if (Array.isArray(q.solutions) && q.solutions.length > 0) {
+    return q.solutions.map((sol, idx) => ({
+      label: sol.label || `Solución ${idx + 1}`,
+      code: sol.code || '',
+      tests: testsFromFile,
+    }));
+  }
+  return [{ label: 'Solución principal', code: q.solution || '', tests: testsFromFile }];
+}
+
+async function migrateSchema() {
+  console.log('[migrate] Aplicando migración de schema (idempotente)...');
   await db.execute(sql`DROP TABLE IF EXISTS categories CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS technologies CASCADE`);
-  console.log('[migrate] DROP COLUMN obsoletas (si existen)...');
   await db.execute(sql`ALTER TABLE questions DROP COLUMN IF EXISTS difficulty`);
   await db.execute(sql`ALTER TABLE questions DROP COLUMN IF EXISTS category_id`);
   await db.execute(sql`ALTER TABLE quizzes DROP COLUMN IF EXISTS technology_id`);
   await db.execute(sql`ALTER TABLE quizzes DROP COLUMN IF EXISTS category_id`);
-  console.log('[migrate] ADD COLUMN language...');
   await db.execute(sql`ALTER TABLE questions ADD COLUMN IF NOT EXISTS language varchar(20) NOT NULL DEFAULT 'javascript'`);
   await db.execute(sql`ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS language varchar(20) NOT NULL DEFAULT 'javascript'`);
-  console.log('[migrate] ADD COLUMN solution...');
   await db.execute(sql`ALTER TABLE questions ADD COLUMN IF NOT EXISTS solution TEXT`);
-  console.log('[migrate] Wipe data...');
-  await db.execute(sql`TRUNCATE TABLE submissions, quiz_questions, quizzes, questions RESTART IDENTITY CASCADE`);
+  await db.execute(sql`ALTER TABLE questions ADD COLUMN IF NOT EXISTS setup_code TEXT`);
+  await db.execute(sql`ALTER TABLE questions ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`);
+  await db.execute(sql`DELETE FROM submissions a USING submissions b WHERE a.quiz_question_id = b.quiz_question_id AND a.id < b.id`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS submissions_quiz_question_id_key ON submissions (quiz_question_id)`);
   console.log('[migrate] OK');
 }
 
-async function seedQuestions() {
-  reloadTestsCache();
-  const jsonPath = path.join(__dirname, 'questions-batch.json');
-  const data = JSON.parse(readFileSync(jsonPath, 'utf-8'));
-
-  console.log(`[seed] Insertando ${data.length} preguntas con campo language...`);
-
-  let inserted = 0;
-  let skipped = 0;
-  let testsLoaded = 0;
-
-  for (let i = 0; i < data.length; i++) {
-    const q = data[i];
-    const hash = md5(q.title + q.description);
-    const language = q.language;
-    const insertData = {
-      language,
-      type: q.type,
-      title: q.title,
-      description: q.description,
-      hash,
-    };
-
-    if (q.type === 'multiple_choice') {
-      insertData.options = q.options;
-      insertData.correctOption = q.correctOption;
-      insertData.starterCode = null;
-      insertData.testsTemplate = null;
-    } else {
-      insertData.starterCode = q.starterCode;
-      insertData.setupCode = q.setupCode || null;
-      insertData.options = null;
-      insertData.correctOption = null;
-      insertData.solution = q.solution || null;
-      const questionId = i + 1;
-      const testsFromFile = getTestsForQuestion(language, questionId);
-      if (testsFromFile) {
-        insertData.testsTemplate = testsFromFile;
-        insertData.solutions = [{ label: 'Solución principal', code: q.solution || '', tests: testsFromFile }];
-        testsLoaded++;
-      } else {
-        insertData.testsTemplate = null;
-        insertData.solutions = null;
+async function archiveMissingQuestions(hashesInJson, dryRun) {
+  const allActive = await db.select().from(questions).where(isNull(questions.archivedAt));
+  let archived = 0;
+  for (const q of allActive) {
+    if (!hashesInJson.has(q.hash)) {
+      if (!dryRun) {
+        await db.update(questions).set({ archivedAt: new Date() }).where(eq(questions.id, q.id));
       }
+      archived++;
     }
+  }
+  return archived;
+}
+
+async function seedFromDb(dryRun = false) {
+  console.log(`[seed] ${dryRun ? '[DRY-RUN] ' : ''}Leyendo preguntas de la BD...`);
+
+  const rows = await db
+    .select()
+    .from(questions)
+    .where(and(eq(questions.isActive, true), isNull(questions.archivedAt)));
+
+  console.log(`[seed] ${rows.length} preguntas activas encontradas en la BD`);
+
+  const hashesInJson = new Set();
+  let stats = { inserted: 0, updated: 0, errors: 0 };
+
+  for (const q of rows) {
+    const hash = md5(q.title + q.description);
+    hashesInJson.add(hash);
+    let existing = await db.select().from(questions).where(eq(questions.id, q.id));
+    if (existing.length === 0) {
+      existing = await db.select().from(questions).where(eq(questions.hash, hash));
+    }
+    const stableId = existing.length > 0 ? existing[0].id : q.id;
+    const testsFromFile = getTestEntry(q.language, stableId);
 
     try {
-      await db.insert(questions).values(insertData);
-      inserted++;
+      const data = {
+        language: q.language,
+        type: q.type,
+        title: q.title,
+        description: q.description,
+        hash,
+      };
+
+      if (q.type === 'multiple_choice') {
+        data.options = q.options;
+        data.correctOption = q.correctOption;
+        data.starterCode = null;
+        data.editorStarterCode = null;
+        data.setupCode = null;
+        data.testsTemplate = null;
+        data.solutions = null;
+        data.solution = null;
+      } else {
+        data.starterCode = q.starterCode;
+        data.editorStarterCode = q.editorStarterCode || null;
+        data.setupCode = q.setupCode || null;
+        data.options = null;
+        data.correctOption = null;
+        data.solution = q.solution || null;
+        data.testsTemplate = testsFromFile || null;
+        data.solutions = buildSolutions(q, testsFromFile);
+      }
+
+      if (existing.length > 0) {
+        if (!dryRun) {
+          await db.update(questions).set(data).where(eq(questions.id, existing[0].id));
+        }
+        stats.updated++;
+      } else {
+        if (!dryRun) {
+          await db.insert(questions).values({ ...data, id: stableId });
+        }
+        stats.inserted++;
+      }
     } catch (err) {
-      console.error(`[seed] Error insertando "${q.title}":`, err.message);
-      skipped++;
+      console.error(`[seed] Error procesando "${q.title}":`, err.message);
+      stats.errors++;
     }
   }
 
-  console.log(`[seed] ${inserted} preguntas insertadas, ${skipped} saltadas`);
-  console.log(`[seed] Tests cargados desde tests/<lang>.json: ${testsLoaded}`);
+  if (!dryRun) {
+    const archived = await archiveMissingQuestions(hashesInJson, dryRun);
+    if (archived > 0) {
+      console.log(`[seed] ${archived} preguntas archivadas (sin match en BD activa)`);
+    }
+    await regenerateAllTestsFiles();
+  }
+
+  console.log(`[seed] ${dryRun ? '[DRY-RUN] ' : ''}inserted: ${stats.inserted}, updated: ${stats.updated}, errors: ${stats.errors}`);
 }
 
 async function main() {
-  console.log('=== MIGRATE + SEED: simplificado (sin categorias/technologies/difficulty) ===\n');
-  await migrate();
+  const dryRun = process.argv.includes('--dry-run');
+
+  console.log('=== SEED FROM DB: BD como fuente de verdad ===\n');
+
+  if (dryRun) {
+    console.log('*** MODO DRY-RUN: no se realizarán cambios en la BD ***\n');
+  } else {
+    console.log('*** Backup automático antes de cambios ***\n');
+    await runBackup();
+  }
+
+  await migrateSchema();
   console.log();
-  await seedQuestions();
+
+  await seedFromDb(dryRun);
   console.log();
   console.log('=== Listo ===');
+
+  await pool.end();
   process.exit(0);
 }
 

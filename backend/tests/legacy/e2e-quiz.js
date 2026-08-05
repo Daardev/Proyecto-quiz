@@ -31,7 +31,7 @@ async function run() {
     await page.waitForFunction(
       (prev) => {
         if (/\/results\?quizId=/.test(location.href)) return true;
-        const titleEl = document.getElementById('question-description');
+        const titleEl = document.getElementById('question-title');
         if (!titleEl) return false;
         const title = titleEl.textContent.trim();
         const progressEl = document.getElementById('progress');
@@ -49,12 +49,33 @@ async function run() {
       () => {
         if (/\/results\?quizId=/.test(location.href)) return true;
         const btn = document.getElementById('submit-btn');
-        const titleEl = document.getElementById('question-description');
+        const titleEl = document.getElementById('question-title');
         if (!btn || !titleEl) return false;
         const title = titleEl.textContent.trim();
         return !btn.disabled && title !== 'Cargando…' && title !== 'Error';
       },
       { timeout: 20000 }
+    );
+  }
+
+  async function fillCodeEditor(value) {
+    await page.evaluate((v) => {
+      const editors = window.monaco?.editor?.getEditors?.() || [];
+      const editor = editors[editors.length - 1];
+      if (editor) editor.setValue(v);
+    }, value);
+  }
+
+  async function waitForAutoAdvance(prevProgress) {
+    await page.waitForFunction(
+      (prev) => {
+        if (/\/results\?quizId=/.test(location.href)) return true;
+        const prog = document.getElementById('progress')?.textContent.trim();
+        const fb = document.querySelector('.answer-feedback');
+        return fb === null && prog !== prev;
+      },
+      prevProgress,
+      { timeout: 10000 }
     );
   }
 
@@ -83,28 +104,27 @@ async function run() {
     log(`Quiz URL: ${page.url()}`, /quiz\?quizId=\d+/.test(page.url()));
 
     console.log('\n--- Test A3: Responder Q1 y avanzar a Q2 ---');
-    await page.waitForSelector('#question-description', { timeout: 5000 });
+    await page.waitForSelector('#question-title', { timeout: 5000 });
     await page.waitForFunction(
-      () => document.getElementById('question-description').textContent.trim() !== 'Cargando…',
+      () => document.getElementById('question-title').textContent.trim() !== 'Cargando…',
       { timeout: 10000 }
     );
-    const aQ1Title = await page.locator('#question-description').textContent();
+    const aQ1Title = await page.locator('#question-title').textContent();
     log(`Q1: "${aQ1Title.substring(0, 50)}..."`, aQ1Title.length > 0);
 
     const isMC_A = await page.locator('#choice-area').isVisible();
     if (isMC_A) {
       await page.locator('#options-container button').first().click();
     } else {
-      const ta = page.locator('textarea.inputarea').first();
-      if (await ta.count() > 0) await ta.fill('SELECT 1');
+      await fillCodeEditor('SELECT 1');
     }
+    const prevProgressA1 = await page.locator('#progress').textContent();
     await page.click('#submit-btn');
-    await page.waitForSelector('#feedback:not(.hidden)', { timeout: 10000 });
-    await page.click('#next-btn');
+    await waitForAutoAdvance(prevProgressA1);
     const totalTextA = await page.locator('#progress').textContent();
     const totalA = parseInt(totalTextA.split('/')[1].trim(), 10) || 10;
     await waitForNewQuestion('1 / ' + totalA);
-    const aQ2Title = await page.locator('#question-description').textContent();
+    const aQ2Title = await page.locator('#question-title').textContent();
     log(`Q2: "${aQ2Title.substring(0, 50)}..."`, aQ2Title.length > 0);
     log(`Q1 ≠ Q2 (no loop): OK`, aQ1Title !== aQ2Title);
 
@@ -117,12 +137,11 @@ async function run() {
       if (isMC) {
         await page.locator('#options-container button').first().click();
       } else {
-        const ta = page.locator('textarea.inputarea').first();
-        if (await ta.count() > 0) await ta.fill('SELECT 1');
+        await fillCodeEditor('SELECT 1');
       }
+      const prev = await page.locator('#progress').textContent();
       await page.click('#submit-btn');
-      await page.waitForSelector('#feedback:not(.hidden)', { timeout: 10000 });
-      await page.click('#next-btn');
+      await waitForAutoAdvance(prev);
       if (i < totalA) {
         await waitForNewQuestion(prevProgress);
         if (/\/results\?quizId=/.test(page.url())) break;
@@ -158,32 +177,27 @@ async function run() {
     log(`Quiz anónimo URL: ${bQuizUrl}`, /quiz\?quizId=\d+/.test(bQuizUrl));
 
     console.log('\n--- Test B2: Responder Q1 (anónimo) y avanzar a Q2 ---');
-    await page.waitForSelector('#question-description', { timeout: 5000 });
+    await page.waitForSelector('#question-title', { timeout: 5000 });
     await page.waitForFunction(
-      () => document.getElementById('question-description').textContent.trim() !== 'Cargando…',
+      () => document.getElementById('question-title').textContent.trim() !== 'Cargando…',
       { timeout: 10000 }
     );
-    const bQ1Title = await page.locator('#question-description').textContent();
+    const bQ1Title = await page.locator('#question-title').textContent();
     log(`Q1 (anónimo): "${bQ1Title.substring(0, 50)}..."`, bQ1Title.length > 0);
 
     const isMC_B = await page.locator('#choice-area').isVisible();
     if (isMC_B) {
       await page.locator('#options-container button').first().click();
     } else {
-      const ta = page.locator('textarea.inputarea').first();
-      if (await ta.count() > 0) await ta.fill('SELECT 1');
+      await fillCodeEditor('SELECT 1');
     }
+    const prevProgressB1 = await page.locator('#progress').textContent();
     await page.click('#submit-btn');
-    await page.waitForSelector('#feedback:not(.hidden)', { timeout: 10000 });
-
-    const feedbackText = await page.locator('#feedback').textContent();
-    log(`Feedback contiene "modo invitado": ${/invitado|perfil/.test(feedbackText)}`, true);
-
-    await page.click('#next-btn');
+    await waitForAutoAdvance(prevProgressB1);
     const totalTextB = await page.locator('#progress').textContent();
     const totalB = parseInt(totalTextB.split('/')[1].trim(), 10) || 10;
     await waitForNewQuestion('1 / ' + totalB);
-    const bQ2Title = await page.locator('#question-description').textContent();
+    const bQ2Title = await page.locator('#question-title').textContent();
     log(`Q2 (anónimo): "${bQ2Title.substring(0, 50)}..."`, bQ2Title.length > 0);
     log(`Q1 ≠ Q2 (NO loop): OK`, bQ1Title !== bQ2Title);
 
@@ -196,12 +210,11 @@ async function run() {
       if (isMC) {
         await page.locator('#options-container button').first().click();
       } else {
-        const ta = page.locator('textarea.inputarea').first();
-        if (await ta.count() > 0) await ta.fill('SELECT 1');
+        await fillCodeEditor('SELECT 1');
       }
+      const prev = await page.locator('#progress').textContent();
       await page.click('#submit-btn');
-      await page.waitForSelector('#feedback:not(.hidden)', { timeout: 10000 });
-      await page.click('#next-btn');
+      await waitForAutoAdvance(prev);
       if (i < totalB) {
         await waitForNewQuestion(prevProgressB);
         if (/\/results\?quizId=/.test(page.url())) break;

@@ -3,8 +3,8 @@ import * as subCtrl from '../controllers/submissions.controller.js';
 
 const router = Router();
 
-router.post('/quizzes/:quizId/submit', subCtrl.submitAnswer);
-router.post('/quizzes/:quizId/skip', subCtrl.skipQuestion);
+router.post('/quizzes/:quizId/preview', subCtrl.previewCode);
+router.post('/quizzes/:quizId/finish', subCtrl.finishQuiz);
 router.get('/quizzes/:quizId/results', subCtrl.getQuizResults);
 
 export default router;

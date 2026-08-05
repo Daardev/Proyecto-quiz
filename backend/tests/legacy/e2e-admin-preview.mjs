@@ -56,6 +56,16 @@ async function run() {
     const progress = await popupPage.locator('#progress').textContent();
     log(`Progress: "${progress}"`, progress.includes('1 /'));
 
+    console.log('\n-- Verificar estructura de dos paneles para code --');
+    const gridVisible = await popupPage.locator('#question-grid').isVisible();
+    log(`#question-grid visible: ${gridVisible}`, gridVisible);
+    const viewerVisible = await popupPage.locator('#initial-code-viewer').isVisible();
+    log(`#initial-code-viewer visible: ${viewerVisible}`, viewerVisible);
+    const editorVisible = await popupPage.locator('#code-editor').isVisible();
+    log(`#code-editor visible: ${editorVisible}`, editorVisible);
+    const previewBtnVisible = await popupPage.locator('#preview-btn').isVisible();
+    log(`Botón "Probar código" visible: ${previewBtnVisible}`, previewBtnVisible);
+
     console.log('\n-- Verificar botón preview-btn se deshabilita brevemente --');
     const btnState = await page.locator('#preview-btn').textContent();
     log(`Texto del botón después: "${btnState}"`, true);

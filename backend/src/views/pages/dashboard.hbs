@@ -74,6 +74,7 @@
             <td class="col-actions">
               <a href="/admin/{{this.id}}/edit?return={{../returnUrlEncoded}}">Editar</a>
               <form action="/admin/{{this.id}}/delete" method="POST" style="display:inline" onsubmit="return confirm('¿Eliminar esta pregunta?')">
+                <input type="hidden" name="return" value="{{../returnUrlEncoded}}">
                 <button type="submit" class="secondary">Eliminar</button>
               </form>
             </td>

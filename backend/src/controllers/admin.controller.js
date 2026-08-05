@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, isNull } from 'drizzle-orm';
 import { db } from '../config/database.js';
 import { questions, quizzes, quizQuestions } from '../drizzle/schema.js';
-import { upsertQuestionInJson, removeQuestionFromJson } from '../services/questions-json-sync.js';
+import { updateTestEntry, removeTestEntry } from '../services/question-export.js';
 
 function md5(str) {
   return crypto.createHash('md5').update(str).digest('hex');
@@ -137,16 +137,23 @@ function parseFormPayload(body) {
     payload.options = options;
     payload.correctOption = parseInt(body.correctOption, 10);
     payload.starterCode = null;
+    payload.editorStarterCode = null;
+    payload.setupCode = null;
     payload.testsTemplate = null;
     payload.solutions = [];
   } else {
     payload.starterCode = body.starterCode || '';
-    payload.testsTemplate = null;
+    payload.editorStarterCode = body.editorStarterCode || '';
+    payload.setupCode = (body.setupCode || '').trim() || null;
     payload.options = null;
     payload.correctOption = null;
 
     const solutionsFromForm = parseSolutionsFromForm(body);
     payload.solutions = solutionsFromForm;
+
+    payload.testsTemplate = (Array.isArray(solutionsFromForm) && solutionsFromForm[0]?.tests?.length)
+      ? solutionsFromForm[0].tests
+      : null;
   }
   return payload;
 }
@@ -186,6 +193,8 @@ export async function postCreateQuestion(req, res, next) {
       title: payload.title,
       description: payload.description,
       starterCode: payload.starterCode,
+      editorStarterCode: payload.editorStarterCode,
+      setupCode: payload.setupCode,
       testsTemplate: payload.testsTemplate,
       options: payload.options,
       correctOption: payload.correctOption,
@@ -196,10 +205,28 @@ export async function postCreateQuestion(req, res, next) {
 
     const newId = inserted[0]?.id;
     if (newId !== undefined && newId !== null) {
-      await upsertQuestionInJson(payload, newId);
+      const testsForJson = (Array.isArray(payload.testsTemplate) && payload.testsTemplate.length > 0)
+        ? payload.testsTemplate
+        : (Array.isArray(payload.solutions) && payload.solutions[0]?.tests) || [];
+      const [jsonResult] = await Promise.allSettled([
+        updateTestEntry(payload.language, newId, testsForJson),
+      ]);
+      if (jsonResult.status === 'rejected') {
+        console.warn(`[admin] create: BD ok pero tests/${payload.language}.json falló: ${jsonResult.reason}. Corré npm run seed para regenerar.`);
+      }
     }
 
-    res.redirect('/admin');
+    const created = (await db.select().from(questions).where(eq(questions.id, newId)).limit(1))[0];
+    const createdValues = { ...created };
+    if (!Array.isArray(createdValues.solutions)) createdValues.solutions = [];
+    return res.status(200).render('pages/admin/question-form', {
+      question: created,
+      languages: langs.map(l => l.language).sort(),
+      values: createdValues,
+      error: null,
+      returnUrl: sanitizeReturnUrl(req.body.return),
+      saved: true,
+    });
   } catch (err) {
     next(err);
   }
@@ -232,6 +259,8 @@ export async function postUpdateQuestion(req, res, next) {
       title: payload.title,
       description: payload.description,
       starterCode: payload.starterCode,
+      editorStarterCode: payload.editorStarterCode,
+      setupCode: payload.setupCode,
       testsTemplate: payload.testsTemplate,
       options: payload.options,
       correctOption: payload.correctOption,
@@ -240,9 +269,27 @@ export async function postUpdateQuestion(req, res, next) {
       hash,
     }).where(eq(questions.id, id));
 
-    await upsertQuestionInJson(payload, id);
+    const testsForJson = (Array.isArray(payload.testsTemplate) && payload.testsTemplate.length > 0)
+      ? payload.testsTemplate
+      : (Array.isArray(payload.solutions) && payload.solutions[0]?.tests) || [];
+    const [jsonResult] = await Promise.allSettled([
+      updateTestEntry(payload.language, id, testsForJson),
+    ]);
+    if (jsonResult.status === 'rejected') {
+      console.warn(`[admin] update: BD ok pero tests/${payload.language}.json falló: ${jsonResult.reason}. Corré npm run seed para regenerar.`);
+    }
 
-    res.redirect('/admin');
+    const updated = (await db.select().from(questions).where(eq(questions.id, id)).limit(1))[0];
+    const updatedValues = { ...updated };
+    if (!Array.isArray(updatedValues.solutions)) updatedValues.solutions = [];
+    return res.status(200).render('pages/admin/question-form', {
+      question: updated,
+      languages: langs.map(l => l.language).sort(),
+      values: updatedValues,
+      error: null,
+      returnUrl: sanitizeReturnUrl(req.body.return),
+      saved: true,
+    });
   } catch (err) {
     next(err);
   }
@@ -251,9 +298,17 @@ export async function postUpdateQuestion(req, res, next) {
 export async function postDeleteQuestion(req, res, next) {
   try {
     const id = parseInt(req.params.id, 10);
-    await db.update(questions).set({ isActive: false }).where(eq(questions.id, id));
-    await removeQuestionFromJson(id);
-    res.redirect('/admin');
+    const current = (await db.select().from(questions).where(eq(questions.id, id)).limit(1))[0];
+    await db.update(questions).set({ archivedAt: new Date(), isActive: false }).where(eq(questions.id, id));
+    if (current) {
+      const [jsonResult] = await Promise.allSettled([
+        removeTestEntry(current.language, id),
+      ]);
+      if (jsonResult.status === 'rejected') {
+        console.warn(`[admin] delete: BD ok pero tests/${current.language}.json falló: ${jsonResult.reason}. Corré npm run seed para regenerar.`);
+      }
+    }
+    res.redirect(sanitizeReturnUrl(req.body.return));
   } catch (err) {
     next(err);
   }

@@ -1,52 +1,9 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { db, pool } from '../config/database.js';
 import { quizzes, quizQuestions, submissions, questions } from '../drizzle/schema.js';
-import { executeCodeInSandbox, evaluateMultipleChoice, evaluateMarkup, runAgainstSolutions } from '../services/sandbox.service.js';
+import { executeCodeInSandbox, evaluateMultipleChoice, evaluateMarkup, runAgainstSolutions, runPreview } from '../services/sandbox.service.js';
 
-function detectCategoryFromTechnology(techName) {
-  const n = techName.toLowerCase();
-  if (n.includes('node')) return 'node';
-  if (n.includes('postgres') || n.includes('sql')) return 'postgresql';
-  return 'javascript';
-}
-
-const MAX_ATTEMPTS = 5;
-
-async function decrementAttempts(quizId) {
-  const r = await pool.query(
-    `UPDATE quizzes
-        SET attempts_left = GREATEST(attempts_left - 1, 0)
-      WHERE id = $1 AND attempts_left > 0
-      RETURNING attempts_left`,
-    [quizId]
-  );
-  return r.rows[0]?.attempts_left ?? 0;
-}
-
-async function getAttemptsLeft(quizId) {
-  const r = await pool.query(
-    `SELECT attempts_left FROM quizzes WHERE id = $1`,
-    [quizId]
-  );
-  return r.rows[0]?.attempts_left ?? 0;
-}
-
-async function incrementQuestionAttempts(quizQuestionId) {
-  await pool.query(
-    `UPDATE quiz_questions
-        SET attempts_count = attempts_count + 1
-      WHERE id = $1`,
-    [quizQuestionId]
-  );
-}
-
-async function getQuestionAttemptsCount(quizQuestionId) {
-  const r = await pool.query(
-    `SELECT attempts_count FROM quiz_questions WHERE id = $1`,
-    [quizQuestionId]
-  );
-  return r.rows[0]?.attempts_count ?? 0;
-}
+const MAX_PREVIEWS_PER_QUESTION = 10;
 
 function isSubmissionCorrect(sandboxResult) {
   if (sandboxResult?._isCorrect === true) return true;
@@ -55,22 +12,65 @@ function isSubmissionCorrect(sandboxResult) {
     && (sandboxResult?.passed || 0) === (sandboxResult?.total || 0);
 }
 
-export async function submitAnswer(req, res) {
-  const quizId = parseInt(req.params.quizId, 10);
-  const { questionId, code, answer } = req.body || {};
+async function incrementPreviewsUsed(quizQuestionId) {
+  const r = await pool.query(
+    `UPDATE quiz_questions
+        SET previews_used = previews_used + 1
+      WHERE id = $1
+      RETURNING previews_used`,
+    [quizQuestionId]
+  );
+  return r.rows[0]?.previews_used ?? 0;
+}
 
-  if (!Number.isInteger(quizId) || !questionId) {
-    return res.status(400).json({ error: 'quizId y questionId son requeridos' });
+async function runUserCode(question, code) {
+  const language = (question.language || '').toLowerCase();
+  if (Array.isArray(question.solutions) && question.solutions.length > 0) {
+    return runAgainstSolutions(code, language, question.solutions, question.setupCode);
+  }
+  const category = language === 'sql' ? 'postgresql' : language;
+  const tests = question.testsTemplate || [];
+  if (language === 'html-css-js') {
+    return evaluateMarkup(code, tests);
+  }
+  return executeCodeInSandbox(code, category, tests, question.setupCode);
+}
+
+export async function previewCode(req, res) {
+  const quizId = parseInt(req.params.quizId, 10);
+  const { questionId, code } = req.body || {};
+
+  if (!Number.isInteger(quizId)) {
+    return res.status(400).json({ error: 'quizId invalido' });
+  }
+  if (!Number.isInteger(parseInt(questionId, 10))) {
+    return res.status(400).json({ error: 'questionId requerido' });
+  }
+  if (typeof code !== 'string') {
+    return res.status(400).json({ error: 'code es requerido' });
   }
 
-  const qqRows = await db.select().from(quizQuestions)
+  const rows = await db.select({
+    qqId: quizQuestions.id,
+    qqPreviewsUsed: quizQuestions.previewsUsed,
+  })
+    .from(quizQuestions)
     .where(and(eq(quizQuestions.quizId, quizId), eq(quizQuestions.questionId, questionId)))
     .limit(1);
 
-  if (qqRows.length === 0) {
+  if (rows.length === 0) {
     return res.status(404).json({ error: 'pregunta no encontrada en este quiz' });
   }
-  const qq = qqRows[0];
+
+  const qqPreviewsUsed = Number(rows[0].qqPreviewsUsed) || 0;
+  if (qqPreviewsUsed >= MAX_PREVIEWS_PER_QUESTION) {
+    return res.status(409).json({
+      error: 'previews_exhausted',
+      previewsUsed: qqPreviewsUsed,
+      previewsLimit: MAX_PREVIEWS_PER_QUESTION,
+      previewsLeft: 0,
+    });
+  }
 
   const qRows = await db.select().from(questions).where(eq(questions.id, questionId)).limit(1);
   if (qRows.length === 0) {
@@ -78,148 +78,133 @@ export async function submitAnswer(req, res) {
   }
   const question = qRows[0];
 
-  const attemptsLeft = await getAttemptsLeft(quizId);
-  if (attemptsLeft <= 0) {
-    return res.status(400).json({ error: 'sin intentos restantes' });
-  }
+  const tests = (Array.isArray(question.testsTemplate) && question.testsTemplate.length > 0)
+    ? question.testsTemplate
+    : (Array.isArray(question.solutions) && question.solutions[0]?.tests) || [];
+  const result = await runPreview(code, question.language, question.setupCode || '', tests);
 
-  let sandboxResult;
-  let userCode = '';
-  if (question.type === 'multiple_choice') {
-    if (answer === undefined || answer === null) {
-      return res.status(400).json({ error: 'answer (índice de opción) es requerido' });
-    }
-    sandboxResult = evaluateMultipleChoice(answer, question.correctOption);
-    userCode = JSON.stringify({ answer });
-  } else {
-    if (typeof code !== 'string') {
-      return res.status(400).json({ error: 'code es requerido para preguntas de código' });
-    }
-    const language = (question.language || '').toLowerCase();
-
-    if (Array.isArray(question.solutions) && question.solutions.length > 0) {
-      sandboxResult = await runAgainstSolutions(code, language, question.solutions, question.setupCode);
-    } else {
-      const category = language === 'sql' ? 'postgresql' : language;
-      const tests = question.testsTemplate || [];
-      if (language === 'html-css-js') {
-        sandboxResult = evaluateMarkup(code, tests);
-      } else {
-        sandboxResult = await executeCodeInSandbox(code, category, tests, question.setupCode);
-      }
-    }
-    userCode = code;
-  }
-
-  const isCorrect = isSubmissionCorrect(sandboxResult);
-  const score = isCorrect
-    ? (sandboxResult?._isCorrect === true
-        ? 100
-        : Math.round(((sandboxResult.passed || 0) / (sandboxResult.total || 1)) * 100))
-    : 0;
-
-  // Stamp isCorrect within sandboxResults so the frontend can read a reliable flag
-  // (avoids the 0===0 bug for MC questions where testsTotal is 0).
-  const sandboxWithFlag = { ...sandboxResult, _isCorrect: isCorrect };
-
-  let newAttemptsLeft = attemptsLeft;
-  if (!isCorrect) {
-    newAttemptsLeft = await decrementAttempts(quizId);
-  }
-
-  const existingSub = await db.select().from(submissions).where(eq(submissions.quizQuestionId, qq.id)).limit(1);
-
-  let submission;
-  if (existingSub.length > 0) {
-    const [updated] = await db.update(submissions)
-      .set({
-        code: userCode,
-        sandboxResults: sandboxWithFlag,
-        score,
-        evaluatedAt: new Date(),
-        kind: 'answer',
-      })
-      .where(eq(submissions.id, existingSub[0].id))
-      .returning();
-    submission = updated;
-  } else {
-    const [inserted] = await db.insert(submissions).values({
-      quizQuestionId: qq.id,
-      code: userCode,
-      sandboxResults: sandboxWithFlag,
-      score,
-      evaluatedAt: new Date(),
-      kind: 'answer',
-    }).returning();
-    submission = inserted;
-  }
-
-  await incrementQuestionAttempts(qq.id);
-  const attemptsCount = await getQuestionAttemptsCount(qq.id);
+  const newPreviewsUsed = await incrementPreviewsUsed(rows[0].qqId);
+  const previewsLeft = Math.max(0, MAX_PREVIEWS_PER_QUESTION - newPreviewsUsed);
 
   return res.json({
-    submissionId: submission.id,
-    saved: true,
-    isCorrect,
-    score,
-    testsPassed: sandboxResult.passed || 0,
-    testsTotal: sandboxResult.total || 0,
-    sandbox: sandboxWithFlag,
-    notLoggedIn: !req.user,
-    message: req.user ? null : 'Inicia sesión para acumular puntos en tu perfil',
-    attemptsLeft: newAttemptsLeft,
-    maxAttempts: MAX_ATTEMPTS,
-    attemptsCount,
+    ...result,
+    previewsUsed: newPreviewsUsed,
+    previewsLimit: MAX_PREVIEWS_PER_QUESTION,
+    previewsLeft,
   });
 }
 
-export async function skipQuestion(req, res) {
+export async function finishQuiz(req, res) {
   const quizId = parseInt(req.params.quizId, 10);
-  const { questionId } = req.body || {};
+  const { answers } = req.body || {};
 
-  if (!Number.isInteger(quizId) || !questionId) {
-    return res.status(400).json({ error: 'quizId y questionId son requeridos' });
+  if (!Number.isInteger(quizId)) {
+    return res.status(400).json({ error: 'quizId invalido' });
+  }
+  if (!Array.isArray(answers)) {
+    return res.status(400).json({ error: 'answers (array) es requerido' });
   }
 
-  const qqRows = await db.select().from(quizQuestions)
-    .where(and(eq(quizQuestions.quizId, quizId), eq(quizQuestions.questionId, questionId)))
-    .limit(1);
+  const qqRows = await db.select({
+    qqId: quizQuestions.id,
+    qqOrder: quizQuestions.order,
+    questionId: quizQuestions.questionId,
+    question: questions,
+  })
+    .from(quizQuestions)
+    .leftJoin(questions, eq(questions.id, quizQuestions.questionId))
+    .where(eq(quizQuestions.quizId, quizId));
 
   if (qqRows.length === 0) {
-    return res.status(404).json({ error: 'pregunta no encontrada en este quiz' });
+    return res.status(404).json({ error: 'quiz sin preguntas' });
   }
-  const qq = qqRows[0];
 
-  const existingSub = await db.select().from(submissions).where(eq(submissions.quizQuestionId, qq.id)).limit(1);
-  if (existingSub.length > 0) {
-    const lastCorrect = isSubmissionCorrect(existingSub[0].sandboxResults);
-    if (lastCorrect) {
-      return res.status(409).json({ error: 'esta pregunta ya fue respondida correctamente' });
+  const answersByQId = new Map();
+  for (const a of answers) {
+    if (a && a.questionId != null) {
+      answersByQId.set(a.questionId, a);
     }
-  } else {
-    return res.status(400).json({ error: 'solo puedes saltar después de equivocarte al menos una vez' });
   }
 
-  const attemptsLeft = await getAttemptsLeft(quizId);
-  if (attemptsLeft <= 0) {
-    return res.status(400).json({ error: 'sin intentos restantes' });
+  let saved = 0;
+  for (const row of qqRows) {
+    const qq = { id: row.qqId, order: row.qqOrder };
+    const question = row.question;
+    if (!question) continue;
+
+    const answer = answersByQId.get(question.id);
+    const isExplicitlySkipped = !!(answer && answer.skipped === true);
+
+    const isCodeAnswerEmpty = (question.type !== 'multiple_choice')
+      && (!answer || typeof answer.code !== 'string' || answer.code.trim() === '');
+    const isMcAnswerEmpty = (question.type === 'multiple_choice')
+      && (!answer || answer.option === undefined || answer.option === null);
+
+    const isImplicitlySkipped = isCodeAnswerEmpty || isMcAnswerEmpty;
+
+    let submission;
+
+    if (isExplicitlySkipped || isImplicitlySkipped) {
+      submission = {
+        quizQuestionId: qq.id,
+        code: '(skipped)',
+        sandboxResults: null,
+        score: 0,
+        evaluatedAt: new Date(),
+        kind: 'skipped',
+      };
+    } else if (question.type === 'multiple_choice') {
+      const option = answer.option;
+      const sandboxResult = evaluateMultipleChoice(option, question.correctOption);
+      const isCorrect = isSubmissionCorrect(sandboxResult);
+      const score = isCorrect ? 100 : 0;
+      submission = {
+        quizQuestionId: qq.id,
+        code: JSON.stringify({ option }),
+        sandboxResults: { ...sandboxResult, _isCorrect: isCorrect },
+        score,
+        evaluatedAt: new Date(),
+        kind: 'answer',
+      };
+    } else {
+      const code = answer.code;
+      const sandboxResult = await runUserCode(question, code);
+      const isCorrect = isSubmissionCorrect(sandboxResult);
+      const score = isCorrect
+        ? (sandboxResult?._isCorrect === true
+            ? 100
+            : Math.round(((sandboxResult.passed || 0) / (sandboxResult.total || 1)) * 100))
+        : 0;
+      submission = {
+        quizQuestionId: qq.id,
+        code,
+        sandboxResults: { ...sandboxResult, _isCorrect: isCorrect },
+        score,
+        evaluatedAt: new Date(),
+        kind: 'answer',
+      };
+    }
+
+    await db.insert(submissions)
+      .values(submission)
+      .onConflictDoUpdate({
+        target: submissions.quizQuestionId,
+        set: {
+          code: submission.code,
+          sandboxResults: submission.sandboxResults,
+          score: submission.score,
+          evaluatedAt: submission.evaluatedAt,
+          kind: submission.kind,
+        },
+      });
+    saved++;
   }
 
-  if (existingSub.length > 0) {
-    await db.update(submissions)
-      .set({ kind: 'skipped' })
-      .where(eq(submissions.id, existingSub[0].id));
-  }
+  await db.update(quizzes)
+    .set({ completedAt: new Date() })
+    .where(eq(quizzes.id, quizId));
 
-  const newAttemptsLeft = await decrementAttempts(quizId);
-
-  return res.json({
-    saved: true,
-    skipped: true,
-    attemptsLeft: newAttemptsLeft,
-    maxAttempts: MAX_ATTEMPTS,
-    quizQuestionId: qq.id,
-  });
+  return res.json({ success: true, saved });
 }
 
 export async function getQuizResults(req, res) {
@@ -234,18 +219,53 @@ export async function getQuizResults(req, res) {
   }
   const quiz = quizRows[0];
 
-  if (!quiz.completedAt) {
-    await db.update(quizzes).set({ completedAt: new Date() }).where(eq(quizzes.id, quizId));
-  }
+  const lastSub = db
+    .select({
+      id: submissions.id,
+      quizQuestionId: submissions.quizQuestionId,
+      code: submissions.code,
+      sandboxResults: submissions.sandboxResults,
+      score: submissions.score,
+      evaluatedAt: submissions.evaluatedAt,
+      kind: submissions.kind,
+    })
+    .from(submissions)
+    .where(eq(submissions.quizQuestionId, quizQuestions.id))
+    .orderBy(submissions.id)
+    .limit(1)
+    .as('last_sub');
 
-  const qqRows = await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, quizId));
+  const rows = await db.select({
+    qqId: quizQuestions.id,
+    qqOrder: quizQuestions.order,
+    q: questions,
+    subId: lastSub.id,
+    subQuizQuestionId: lastSub.quizQuestionId,
+    subCode: lastSub.code,
+    subSandbox: lastSub.sandboxResults,
+    subScore: lastSub.score,
+    subEvaluatedAt: lastSub.evaluatedAt,
+    subKind: lastSub.kind,
+  })
+    .from(quizQuestions)
+    .leftJoin(questions, eq(questions.id, quizQuestions.questionId))
+    .leftJoinLateral(lastSub, sql`true`)
+    .where(eq(quizQuestions.quizId, quizId))
+    .orderBy(quizQuestions.order);
 
-  const questionsData = [];
-  for (const qq of qqRows) {
-    const q = (await db.select().from(questions).where(eq(questions.id, qq.questionId)).limit(1))[0];
-    const subs = await db.select().from(submissions).where(eq(submissions.quizQuestionId, qq.id)).limit(1);
-    questionsData.push({ qq, q, submission: subs[0] || null });
-  }
+  const questionsData = rows.map(r => ({
+    qq: { id: r.qqId, order: r.qqOrder },
+    q: r.q,
+    submission: r.subId == null ? null : {
+      id: r.subId,
+      quizQuestionId: r.subQuizQuestionId,
+      code: r.subCode,
+      sandboxResults: r.subSandbox,
+      score: r.subScore,
+      evaluatedAt: r.subEvaluatedAt,
+      kind: r.subKind,
+    },
+  }));
 
   const totalScore = questionsData.reduce((sum, item) => sum + (item.submission?.score || 0), 0);
 
@@ -269,9 +289,9 @@ export async function getQuizResults(req, res) {
         if (isMc && sub?.code) {
           try {
             const parsed = JSON.parse(sub.code);
-            if (typeof parsed.answer === 'number' && options) {
-              userAnswerIndex = parsed.answer;
-              userAnswerText = options[parsed.answer] ?? null;
+            if (typeof parsed.option === 'number' && options) {
+              userAnswerIndex = parsed.option;
+              userAnswerText = options[parsed.option] ?? null;
             }
           } catch (_) { /* ignore */ }
         } else if (!isMc && sub?.code) {

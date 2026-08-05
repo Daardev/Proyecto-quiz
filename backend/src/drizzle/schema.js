@@ -26,6 +26,7 @@ export const questions = pgTable('questions', {
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description').notNull(),
   starterCode: text('starter_code'),
+  editorStarterCode: text('editor_starter_code'),
   setupCode: text('setup_code'),
   testsTemplate: json('tests_template'),
   options: json('options'),
@@ -34,6 +35,7 @@ export const questions = pgTable('questions', {
   solutions: json('solutions'),
   isActive: boolean('is_active').notNull().default(true),
   hash: varchar('hash', { length: 32 }).notNull().unique(),
+  archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -56,6 +58,7 @@ export const quizQuestions = pgTable('quiz_questions', {
     .references(() => questions.id),
   order: integer('order').notNull(),
   attemptsCount: integer('attempts_count').notNull().default(0),
+  previewsUsed: integer('previews_used').notNull().default(0),
 });
 
 export const submissions = pgTable('submissions', {

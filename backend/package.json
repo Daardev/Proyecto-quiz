@@ -12,6 +12,7 @@
       "src/seeds/questions-batch.json",
       "src/seeds/questions-batch.json.tmp",
       "src/seeds/parser/**",
+      "src/seeds/tests/**",
       "backups/**",
       "**/*.tmp"
     ]
@@ -30,7 +31,8 @@
     "validate:tests": "node scripts/validate-test-schemas.mjs",
     "migrate:solutions": "node src/seeds/migrate-solutions.js",
     "cleanup:anonymous": "node src/seeds/cleanup-anonymous.js",
-    "test:e2e": "node tests/e2e-quiz.js"
+    "test:e2e": "node tests/e2e-quiz-new-flow.mjs",
+    "test:flow": "node tests/test-finish-flow.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

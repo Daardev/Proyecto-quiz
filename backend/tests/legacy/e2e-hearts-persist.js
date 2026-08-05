@@ -201,8 +201,11 @@ async function dbAttemptsCount(quizId, order) {
     } else {
       // code
       log('   pregunta tipo CODE');
-      const ta = page.locator('textarea.inputarea').first();
-      await ta.fill('SELECT __bad_xyz__');
+      await page.evaluate(() => {
+        const editors = window.monaco?.editor?.getEditors?.() || [];
+        const editor = editors[editors.length - 1];
+        if (editor) editor.setValue('SELECT __bad_xyz__');
+      });
       await Promise.all([
         waitForSubmitResponse(quizId),
         page.click('#submit-btn'),
@@ -220,7 +223,11 @@ async function dbAttemptsCount(quizId, order) {
       );
 
       log('4. Reenviar SEGUNDA respuesta incorrecta en Q1 (code)');
-      await ta.fill('SELECT __otra_mala_abc__');
+      await page.evaluate(() => {
+        const editors = window.monaco?.editor?.getEditors?.() || [];
+        const editor = editors[editors.length - 1];
+        if (editor) editor.setValue('SELECT __otra_mala_abc__');
+      });
       check('   submit-btn habilitado tras error',
         await page.locator('#submit-btn').isEnabled());
       await Promise.all([

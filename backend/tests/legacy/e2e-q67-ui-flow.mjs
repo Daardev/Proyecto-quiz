@@ -35,16 +35,15 @@ async function run() {
     const title = await page.locator('#question-title').textContent();
     log(`Pregunta cargada: "${title.substring(0, 50)}..."`, title.length > 0);
 
-    const starter = await page.evaluate(() => document.querySelector('textarea.inputarea')?.value || '');
-    log(`starterCode presente (length=${starter.length})`, starter.length > 0);
+    const viewerCount = await page.evaluate(() => window.monaco?.editor?.getEditors?.()?.length || 0);
+    log(`Monaco editors instanciados (viewer read-only + editor editable): ${viewerCount}`, viewerCount >= 2);
 
     const solutionQuery = `WITH totales AS (\n  SELECT dp.id_producto, SUM(dp.cantidad) AS total FROM Detalle_Pedido dp JOIN Pedidos p ON dp.id_pedido = p.id WHERE EXTRACT(YEAR FROM p.fecha) = 2024 GROUP BY dp.id_producto\n) INSERT INTO destacados (id_producto) SELECT id_producto FROM totales WHERE total > 2000`;
     await page.evaluate((args) => {
-      const ta = document.querySelector('textarea.inputarea');
-      const editor = window.monaco?.editor?.getEditors?.()?.[0];
+      const editors = window.monaco?.editor?.getEditors?.() || [];
+      const editor = editors[editors.length - 1];
       if (editor) editor.setValue(args.fullCode);
-      else if (ta) ta.value = args.fullCode;
-    }, { fullCode: starter + '\n' + solutionQuery });
+    }, { fullCode: solutionQuery });
     log('Solución insertada en editor', true);
 
     await page.click('#submit-btn');

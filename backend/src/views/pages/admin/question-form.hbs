@@ -12,9 +12,11 @@
   <h2>{{#if question}}Editar pregunta #{{question.id}}{{else}}Nueva pregunta{{/if}}</h2>
   <p class="muted"><a href="{{returnUrl}}">← Volver al dashboard</a></p>
 
+  {{#if saved}}<p style="color: #1fbf6a; background: rgba(31, 191, 106, 0.08); border-left: 3px solid #1fbf6a; padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1rem;">✓ Cambios guardados</p>{{/if}}
   {{#if error}}<p class="error">{{error}}</p>{{/if}}
 
   <form action="{{#if question}}/admin/{{question.id}}{{else}}/admin{{/if}}" method="POST" class="card">
+    <input type="hidden" name="return" value="{{returnUrl}}">
     <div class="form-header">
       <div class="form-header__group">
         <span class="form-header__label">Tipo</span>
@@ -50,18 +52,33 @@
           <label for="description">Descripción</label>
           <textarea id="description" name="description" rows="6" required>{{values.description}}</textarea>
         </div>
+
+        <div id="answer-fields">
+          <h3 class="form-col__title" style="margin-top: 0.8rem;">Respuesta</h3>
+          <div class="form-group">
+            <label for="starterCode">Código inicial <span class="muted">(visible en el panel izquierdo, no editable)</span></label>
+            <textarea id="starterCode" name="starterCode" rows="6" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;">{{values.starterCode}}</textarea>
+            <small class="muted">Este código se muestra en el panel de referencia (no editable). El usuario escribe su respuesta en el panel derecho. Presiona <kbd>Enter</kbd> para insertar saltos de línea reales.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="editorStarterCode">Código del panel de edición</label>
+            <textarea id="editorStarterCode" name="editorStarterCode" rows="6" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;">{{values.editorStarterCode}}</textarea>
+            <small class="muted">Se muestra en el editor derecho cuando el alumno carga la pregunta. Si está vacío, el editor arranca vacío.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="setupCode">Setup code <span class="muted">(se ejecuta antes del código del usuario, no se muestra)</span></label>
+            <textarea id="setupCode" name="setupCode" rows="6" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;">{{values.setupCode}}</textarea>
+            <small class="muted">Útil para SQL (CREATE TABLE / INSERT INTO) o JS (helpers). Se ejecuta en el sandbox antes del código del usuario. Si está vacío, se omite.</small>
+          </div>
+        </div>
       </div>
 
       <div class="form-col form-col--right">
-        <h3 class="form-col__title">Respuesta</h3>
+        <h3 class="form-col__title" id="right-col-title">Soluciones</h3>
 
-        <div id="code-fields">
-<div class="form-group">
-            <label for="starterCode">Código inicial <span class="muted">(mostrado al usuario)</span></label>
-            <textarea id="starterCode" name="starterCode" rows="6" wrap="off" style="white-space: pre; overflow-x: auto; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.85rem;">{{values.starterCode}}</textarea>
-            <small class="muted">El usuario edita este código. Presiona <kbd>Enter</kbd> para insertar saltos de línea reales.</small>
-          </div>
-
+        <div id="solutions-fields">
           <div class="form-group" style="background: rgba(0, 217, 255, 0.06); border-left: 3px solid var(--accent); padding: 0.8rem 1rem; border-radius: 6px;">
             <label>Soluciones <span style="color: var(--accent); font-size: 0.85rem;">(cada una puede tener tests distintos)</span></label>
             <p class="muted" style="margin-bottom:0.5rem; font-size:0.85rem;">
@@ -118,8 +135,10 @@
 <script>
   function toggleType() {
     const type = document.querySelector('input[name="type"]:checked').value;
-    document.getElementById('code-fields').style.display = type === 'code' ? '' : 'none';
+    document.getElementById('answer-fields').style.display = type === 'code' ? '' : 'none';
+    document.getElementById('solutions-fields').style.display = type === 'code' ? '' : 'none';
     document.getElementById('choice-fields').style.display = type === 'multiple_choice' ? '' : 'none';
+    document.getElementById('right-col-title').textContent = type === 'code' ? 'Soluciones' : 'Opciones';
 
     const list = document.getElementById('options-list');
     if (type === 'multiple_choice' && list.children.length === 0) {

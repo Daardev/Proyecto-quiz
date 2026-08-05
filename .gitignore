@@ -62,11 +62,14 @@ backend/tests/debug-*.jpg
 backend/src/seeds/parser/
 
 # Backups locales y one-offs del backend
+backups/
 backend/backups/
 backend/scripts/*
 !backend/scripts/sync-assets.mjs
 backend/_chk.cjs
 backend/debug-categories.js
+backend/audit-states.mjs
+backend/check-admin.mjs
 backend/src/seeds/questions-batch.json.bak
 
 # OS / editores

@@ -42,9 +42,12 @@ export class ApiClient {
 
   getLanguages() { return this.request('/languages'); }
   generateQuiz(data) { return this.request('/quizzes/generate', { method: 'POST', body: data }); }
-  getCurrentQuestion(quizId) { return this.request(`/quizzes/${quizId}/current`); }
-  submitAnswer(quizId, data) { return this.request(`/quizzes/${quizId}/submit`, { method: 'POST', body: data }); }
-  skipQuestion(quizId, data) { return this.request(`/quizzes/${quizId}/skip`, { method: 'POST', body: data }); }
+  getCurrentQuestion(quizId, order = null) {
+    const qs = order != null ? `?order=${encodeURIComponent(order)}` : '';
+    return this.request(`/quizzes/${quizId}/current${qs}`);
+  }
+  previewCode(quizId, data) { return this.request(`/quizzes/${quizId}/preview`, { method: 'POST', body: data }); }
+  finishQuiz(quizId, data) { return this.request(`/quizzes/${quizId}/finish`, { method: 'POST', body: data }); }
   getResults(quizId) { return this.request(`/quizzes/${quizId}/results`); }
 }
 

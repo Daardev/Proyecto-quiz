@@ -55,39 +55,33 @@ async function run() {
     log(`Language tag: "${language}"`, language.includes('sql'));
     log(`Progress: "${progress}"`, progress.includes('1 /'));
 
+    const initialViewerCount = await page.evaluate(() => window.monaco?.editor?.getEditors?.()?.length || 0);
+    log(`Monaco editors instanciados (incluye viewer read-only + editor): ${initialViewerCount}`, initialViewerCount >= 2);
+
     const starter = await page.evaluate(() => {
-      const ta = document.querySelector('textarea.inputarea');
-      return ta?.value || '';
+      const editors = window.monaco?.editor?.getEditors?.() || [];
+      const editor = editors.find(e => !e.getOption(monaco?.editor?.EditorOption?.readOnly || 0));
+      return editor?.getValue() || '';
     });
-    log(`StarterCode presente (length=${starter.length})`, starter.length > 0);
+    log(`Editor derecho inicial vacío (length=${starter.length})`, starter.length === 0);
 
     await page.evaluate((args) => {
-      const editor = window.monaco?.editor?.getEditors?.()?.[0];
-      if (editor) {
-        editor.setValue(args.fullCode);
-      } else {
-        const ta = document.querySelector('textarea.inputarea');
-        if (ta) ta.value = args.fullCode;
-      }
-    }, { fullCode: starter + '\n' + SOLUTION_SQL });
+      const editors = window.monaco?.editor?.getEditors?.() || [];
+      const editor = editors[editors.length - 1];
+      if (editor) editor.setValue(args.fullCode);
+    }, { fullCode: SOLUTION_SQL });
     log('Solución canónica insertada en el editor', true);
 
     const editorValue = await page.evaluate(() => {
-      const editor = window.monaco?.editor?.getEditors?.()?.[0];
-      const taValue = document.querySelector('textarea.inputarea')?.value || '';
-      if (editor) {
-        const editorValue = editor.getValue();
-        return { source: 'monaco', value: editorValue, taValue };
-      }
-      return { source: 'textarea', value: taValue, taValue };
+      const editors = window.monaco?.editor?.getEditors?.() || [];
+      const editor = editors[editors.length - 1];
+      return editor ? editor.getValue() : '';
     });
-    log(`Editor source: ${editorValue.source}`, true);
-    log(`Monaco/textarea value length: ${editorValue.value?.length || 0}`, true);
-    log(`Underlying textarea value length: ${editorValue.taValue?.length || 0}`, true);
-    log(`Includes expected SELECT: ${editorValue.value?.includes('SELECT pr.nombre AS nombre_producto, f.total')}`, true);
-    log(`Includes outdated SELECT: ${editorValue.value?.includes('SELECT f.total, pr.nombre AS nombre_producto')}`, true);
+    log(`Editor value length: ${editorValue?.length || 0}`, (editorValue?.length || 0) > 0);
+    log(`Includes expected SELECT: ${editorValue?.includes('SELECT pr.nombre AS nombre_producto, f.total')}`, true);
+    log(`Includes outdated SELECT: ${editorValue?.includes('SELECT f.total, pr.nombre AS nombre_producto')}`, true);
     console.log('=== Last 300 chars of Monaco value ===');
-    console.log(editorValue.value?.substring(Math.max(0, (editorValue.value?.length || 0) - 300)));
+    console.log(editorValue?.substring(Math.max(0, (editorValue?.length || 0) - 300)));
 
     await page.click('#submit-btn');
 

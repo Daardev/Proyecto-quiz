@@ -92,47 +92,105 @@
   ],
   "102": [
     {
-      "input": [[1, 2, 3]],
-      "expected": [2, 4, 6]
+      "input": [
+        [
+          1,
+          2,
+          3
+        ]
+      ],
+      "expected": [
+        2,
+        4,
+        6
+      ]
     },
     {
-      "input": [[]],
+      "input": [
+        []
+      ],
       "expected": []
     },
     {
-      "input": [[5, 10]],
-      "expected": [10, 20]
+      "input": [
+        [
+          5,
+          10
+        ]
+      ],
+      "expected": [
+        10,
+        20
+      ]
     }
   ],
   "103": [
     {
-      "input": [["hola", "javascript", "es", "genial"]],
-      "expected": ["javascript", "genial"]
+      "input": [
+        [
+          "hola",
+          "javascript",
+          "es",
+          "genial"
+        ]
+      ],
+      "expected": [
+        "javascript",
+        "genial"
+      ]
     },
     {
-      "input": [[]],
+      "input": [
+        []
+      ],
       "expected": []
     },
     {
-      "input": [["a", "ab", "abc", "abcd", "abcde"]],
+      "input": [
+        [
+          "a",
+          "ab",
+          "abc",
+          "abcd",
+          "abcde"
+        ]
+      ],
       "expected": []
     }
   ],
   "104": [
     {
-      "input": [[1, 2, 3, 4]],
+      "input": [
+        [
+          1,
+          2,
+          3,
+          4
+        ]
+      ],
       "expected": 10
     },
     {
-      "input": [[]],
+      "input": [
+        []
+      ],
       "expected": 0
     },
     {
-      "input": [[100]],
+      "input": [
+        [
+          100
+        ]
+      ],
       "expected": 100
     },
     {
-      "input": [[-5, 5]],
+      "input": [
+        [
+          -5,
+          5
+        ]
+      ],
       "expected": 0
     }
   ]

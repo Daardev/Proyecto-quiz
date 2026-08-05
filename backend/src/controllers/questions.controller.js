@@ -91,7 +91,9 @@ function isQuestionDone(sub) {
     && (sr?.passed || 0) === (sr?.total || 0);
 }
 
-function toQuestionPayload(qq, q, attemptsLeft) {
+const MAX_PREVIEWS_PER_QUESTION = 10;
+
+function toQuestionPayload(qq, q) {
   return {
     quizQuestionId: qq.id,
     questionId: q.id,
@@ -102,15 +104,16 @@ function toQuestionPayload(qq, q, attemptsLeft) {
     title: q.title,
     description: q.description,
     starterCode: q.starterCode,
+    editorStarterCode: q.editorStarterCode,
+    setupCode: q.setupCode,
     options: q.options,
     difficulty: q.difficulty,
-    attemptsLeft,
-    maxAttempts: 5,
-    attemptsCount: qq.attemptsCount ?? 0,
+    previewsUsed: qq.previewsUsed ?? 0,
+    previewsLimit: MAX_PREVIEWS_PER_QUESTION,
   };
 }
 
-export async function getCurrentQuestionData(quizId) {
+export async function getCurrentQuestionData(quizId, order = null) {
   if (!Number.isInteger(quizId)) {
     return { __error: 400, error: 'quizId invalido' };
   }
@@ -140,7 +143,7 @@ export async function getCurrentQuestionData(quizId) {
   const rows = await db.select({
     qqId: quizQuestions.id,
     qqOrder: quizQuestions.order,
-    qqAttemptsCount: quizQuestions.attemptsCount,
+    qqPreviewsUsed: quizQuestions.previewsUsed,
     q: questions,
     subId: lastSub.id,
     subQuizQuestionId: lastSub.quizQuestionId,
@@ -162,7 +165,7 @@ export async function getCurrentQuestionData(quizId) {
 
   const total = rows.length;
   const ordered = rows.map(r => ({
-    qq: { id: r.qqId, order: r.qqOrder, attemptsCount: r.qqAttemptsCount },
+    qq: { id: r.qqId, order: r.qqOrder, previewsUsed: r.qqPreviewsUsed },
     question: r.q,
     submission: r.subId == null ? null : {
       id: r.subId,
@@ -175,9 +178,17 @@ export async function getCurrentQuestionData(quizId) {
     },
   }));
 
-  const allResolved = ordered.every(o => isQuestionDone(o.submission));
+  if (order != null) {
+    const target = ordered.find(o => o.qq.order === order);
+    if (!target) {
+      return { __error: 404, error: 'pregunta no encontrada en este quiz' };
+    }
+    target.qq.total = total;
+    return toQuestionPayload(target.qq, target.question);
+  }
 
-  if (allResolved || quiz.attemptsLeft <= 0) {
+  const allResolved = ordered.every(o => isQuestionDone(o.submission));
+  if (allResolved) {
     return { done: true, quizId };
   }
 
@@ -187,13 +198,14 @@ export async function getCurrentQuestionData(quizId) {
   }
 
   next.qq.total = total;
-  return toQuestionPayload(next.qq, next.question, quiz.attemptsLeft);
+  return toQuestionPayload(next.qq, next.question);
 }
 
 export async function getCurrentQuestion(req, res) {
   try {
     const quizId = parseInt(req.params.quizId, 10);
-    const data = await getCurrentQuestionData(quizId);
+    const order = req.query.order != null ? parseInt(req.query.order, 10) : null;
+    const data = await getCurrentQuestionData(quizId, order);
 
     if (data.__error) {
       return res.status(data.__error).json({ error: data.error });
@@ -204,7 +216,7 @@ export async function getCurrentQuestion(req, res) {
       return res.json(data);
     }
 
-    const etag = `"${quizId}-${data.quizQuestionId}-${data.attemptsCount}-${data.attemptsLeft}"`;
+    const etag = `"${quizId}-${data.quizQuestionId}-${data.previewsUsed}"`;
     if (req.headers['if-none-match'] === etag) {
       res.setHeader('ETag', etag);
       res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
