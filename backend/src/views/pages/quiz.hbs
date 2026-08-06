@@ -329,8 +329,9 @@
 
     const total = result.total || 0;
     const passed = result.passed || 0;
+    const approved = passed > 0;
     const summary = total > 0
-      ? `<div class="console-output__summary ${passed === total ? 'is-pass' : 'is-fail'}">${passed}/${total} tests pasaron</div>`
+      ? `<div class="console-output__summary ${approved ? 'is-pass' : 'is-fail'}">${approved ? 'Test aprobado' : 'Test no aprobado'}</div>`
       : '';
 
     if (result.kind === 'sql') {

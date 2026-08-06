@@ -32,6 +32,8 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   - `code`: dos paneles + caja "Resultado" siempre visible (placeholder hasta ejecutar `Probar código`) + dos botones (`Probar código`, `Saltar`).
   - `multiple_choice`: layout original sin cambios.
 - `dashboard.hbs` calcula `hasSolution` desde `solution` legacy **y** `solutions[]` nuevo.
+- Consola de `quiz.hbs` ahora muestra **"Test aprobado" / "Test no aprobado"** en vez del contador `X/N tests pasaron` (más legible).
+- Bloque "Tu código" en `results.hbs` colapsado dentro de `<details>`; el footer con Score/Tests se reemplaza por un indicador simple **"Test aprobado" / "Test no aprobado"**; el bloque de respuesta correcta se omite (ahora se ve solo lo que el usuario respondió).
 - `submissions.controller.js` reescrito: un sólo `POST /api/quizzes/:quizId/finish` reemplaza a `submit`/`skip` separados y maneja multi-solución con `runAgainstSolutions`.
 - `wipe-and-seed.js` reescrito: lee preguntas activas de la BD, regenera `tests/<lang>.json`, archiva las preguntas huérfanas (`archivedAt`) y toma un snapshot (`seed-helpers.js`) antes de tocar nada.
 - `main.css` agrega estilos para `.question-grid`, `.question-panel`, `.console-output`, `button.btn-danger`, `#preview-btn.is-busy`, carrusel y sidebar de preguntas.

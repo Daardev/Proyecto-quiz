@@ -89,8 +89,10 @@
     const code = q.userAnswerText != null ? q.userAnswerText : '(sin código enviado)';
     return `
       <div class="answer-block ${cls}">
-        <div class="answer-block__label">Tu código</div>
-        <pre class="answer-block__code">${escapeHtml(code)}</pre>
+        <details class="answer-block__details">
+          <summary class="answer-block__label answer-block__label--clickable">Tu código</summary>
+          <pre class="answer-block__code">${escapeHtml(code)}</pre>
+        </details>
       </div>`;
   }
 
@@ -150,16 +152,13 @@
       questionsListEl.innerHTML = data.questions.map((q, idx) => {
         const sub = q.submission;
         const status = q.status || (sub ? (q.isCorrect ? 'passed' : 'failed') : 'skipped');
-        const label = sub
-          ? `${(sub.sandbox?.testsPassed || 0)}/${(sub.sandbox?.testsTotal || 0)}`
-          : '—';
         const heading = q.description || q.title || '';
+        const resultLabel = q.isCorrect ? 'Test aprobado' : 'Test no aprobado';
         return `
           <div class="card feedback-card ${status}">
             <h3>${idx + 1}. ${escapeHtml(heading)}</h3>
             ${renderUserAnswer(q)}
-            ${renderCorrectAnswer(q)}
-            <p class="feedback-card__score"><strong>Score:</strong> ${sub?.score ?? 0} · <strong>Tests:</strong> ${label}</p>
+            <p class="feedback-card__status ${q.isCorrect ? 'is-pass' : 'is-fail'}">${resultLabel}</p>
           </div>
         `;
       }).join('');
